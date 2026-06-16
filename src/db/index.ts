@@ -4,6 +4,7 @@ import { db } from "./client";
 import {
   broadcastContacts,
   broadcasts,
+  businessEvents,
   customTags,
   messageTemplates,
   recentContacts,
@@ -309,5 +310,113 @@ export function getPendingReminders() {
     .from(reminders)
     .where(and(eq(reminders.completed, 0), sql`${reminders.scheduledAt} <= ${Date.now()}`))
     .orderBy(asc(reminders.scheduledAt))
+    .all();
+}
+
+// -- Business Events --
+
+export function createBusinessEvent(
+  name: string,
+  tags: string | null,
+  period: string | null,
+) {
+  const r = db
+    .insert(businessEvents)
+    .values({ name, tags, period, createdAt: Date.now() })
+    .run();
+  return r.lastInsertRowId;
+}
+
+export function getBusinessEvents() {
+  return db
+    .select()
+    .from(businessEvents)
+    .orderBy(desc(businessEvents.createdAt))
+    .all();
+}
+
+export function getBusinessEvent(id: number) {
+  return db
+    .select()
+    .from(businessEvents)
+    .where(eq(businessEvents.id, id))
+    .get();
+}
+
+export function updateBusinessEvent(
+  id: number,
+  updates: {
+    name?: string;
+    tags?: string | null;
+    period?: string | null;
+    status?: string;
+    reminderEnabled?: number;
+    reminderInterval?: string | null;
+    reminderTime?: string;
+    reminderDay?: number | null;
+    reminderNotificationId?: string | null;
+    lastRemindedAt?: number | null;
+    nextReminderAt?: number | null;
+  },
+) {
+  db.update(businessEvents).set(updates).where(eq(businessEvents.id, id)).run();
+}
+
+export function deleteBusinessEvent(id: number) {
+  db.delete(businessEvents).where(eq(businessEvents.id, id)).run();
+}
+
+export function toggleBusinessEventStatus(id: number) {
+  const event = db
+    .select({ status: businessEvents.status })
+    .from(businessEvents)
+    .where(eq(businessEvents.id, id))
+    .get();
+  if (!event) return;
+  const next = event.status === "active" ? "done" : "active";
+  db.update(businessEvents)
+    .set({ status: next })
+    .where(eq(businessEvents.id, id))
+    .run();
+}
+
+export function getContactsByTags(tags: string[]) {
+  const active = tags.map((t) => t.trim()).filter(Boolean);
+  if (active.length === 0) return [];
+
+  // Build OR chain: tags LIKE '%tag1%' OR tags LIKE '%tag2%' ...
+  const conditions = active.map((tag) =>
+    sql`${recentContacts.tags} LIKE ${"%" + tag + "%"}`,
+  );
+  const combined = conditions.length === 1
+    ? conditions[0]
+    : conditions.reduce((acc, c) => sql`(${acc} OR ${c})`);
+
+  return db
+    .select({
+      phoneNumber: recentContacts.phoneNumber,
+      countryCode: recentContacts.countryCode,
+    })
+    .from(recentContacts)
+    .where(combined)
+    .all();
+}
+
+export function countContactsByTags(tags: string[]) {
+  return getContactsByTags(tags).length;
+}
+
+export function getDueEventReminders() {
+  return db
+    .select()
+    .from(businessEvents)
+    .where(
+      and(
+        eq(businessEvents.reminderEnabled, 1),
+        eq(businessEvents.status, "active"),
+        sql`${businessEvents.nextReminderAt} IS NOT NULL`,
+        sql`${businessEvents.nextReminderAt} <= ${Date.now()}`,
+      ),
+    )
     .all();
 }

@@ -1,5 +1,5 @@
 import { router } from "expo-router";
-import { Bell, Megaphone, MessageCircle, MessageSquareText } from "lucide-react-native";
+import { Bell, ClipboardList, Megaphone, MessageCircle, MessageSquareText } from "lucide-react-native";
 import { Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -34,6 +34,12 @@ export default function AppHeader() {
             className="rounded-xl bg-gray-100 p-2 active:bg-gray-200 dark:bg-gray-700 dark:active:bg-gray-600"
           >
             <MessageSquareText size={20} color="#6b7280" />
+          </Pressable>
+          <Pressable
+            onPress={() => router.push("/business-events")}
+            className="rounded-xl bg-gray-100 p-2 active:bg-gray-200 dark:bg-gray-700 dark:active:bg-gray-600"
+          >
+            <ClipboardList size={20} color="#6b7280" />
           </Pressable>
           <Pressable
             onPress={() => router.push("/broadcast")}

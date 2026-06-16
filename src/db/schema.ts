@@ -66,3 +66,19 @@ export const settings = sqliteTable("settings", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
 });
+
+export const businessEvents = sqliteTable("business_events", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  tags: text("tags"),
+  period: text("period"),
+  status: text("status").notNull().default("active"),
+  reminderEnabled: integer("reminder_enabled").notNull().default(0),
+  reminderInterval: text("reminder_interval"),
+  reminderTime: text("reminder_time").notNull().default("09:00"),
+  reminderDay: integer("reminder_day"),
+  reminderNotificationId: text("reminder_notification_id"),
+  lastRemindedAt: integer("last_reminded_at"),
+  nextReminderAt: integer("next_reminder_at"),
+  createdAt: integer("created_at").notNull(),
+});

@@ -7,6 +7,9 @@ import m0003 from "./0003_add_contact_notes.sql";
 import m0004 from "./0004_add_contact_tags.sql";
 import m0005 from "./0005_custom_tags.sql";
 import m0006 from "./0006_settings.sql";
+import m0007 from "./0007_business_events.sql";
+import m0008 from "./0008_event_reminder_time.sql";
+import m0009 from "./0009_event_reminder_day.sql";
 import journal from "./meta/_journal.json";
 
 export default {
@@ -19,5 +22,8 @@ export default {
     m0004,
     m0005,
     m0006,
+    m0007,
+    m0008,
+    m0009,
   },
 };
