@@ -13,10 +13,15 @@ module.exports = {
       output: "static",
     },
     icon: "./assets/icon.png",
+    splash: {
+      image: "./assets/splash-icon.png",
+      resizeMode: "contain",
+      backgroundColor: "#043D2C",
+    },
     android: {
       adaptiveIcon: {
-        foregroundImage: "./assets/icon.png",
-        backgroundColor: "#ffffff",
+        foregroundImage: "./assets/adaptive-icon.png",
+        backgroundColor: "#043D2C",
       },
       package: "com.atomiciq.com",
       versionCode: 1,
@@ -42,6 +47,24 @@ module.exports = {
         {
           contactsPermission:
             "Allow Atomic IQ to read your contacts to show names for recent numbers.",
+        },
+      ],
+      [
+        "expo-build-properties",
+        {
+          android: {
+            // Galaxy S23 Ultra is arm64-v8a; shipping other ABIs only inflates the APK.
+            buildArchs: ["arm64-v8a"],
+            enableMinifyInReleaseBuilds: true,
+            enableShrinkResourcesInReleaseBuilds: true,
+            enablePngCrunchInReleaseBuilds: true,
+            // Compress .so files and the JS bundle inside the APK instead of storing them.
+            useLegacyPackaging: true,
+            enableBundleCompression: true,
+            // The app renders no React Native <Image>, so drop the GIF/WebP decoders.
+            gifEnabled: false,
+            webpEnabled: false,
+          },
         },
       ],
     ],
