@@ -1,53 +1,61 @@
-import { router, useLocalSearchParams } from "expo-router";
-import { Check, Circle, Plus, SendHorizontal, Trash2, X } from "lucide-react-native";
-import { useEffect, useRef, useState } from "react";
-import { Alert, AppState, FlatList, Pressable, Text, TextInput, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Column, Row, ScrollView, Spacer } from "@expo/ui";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useCallback, useState } from "react";
+import { View } from "react-native";
 
-import MessageEditor from "../../components/Message/MessageEditor";
-import TemplateChips from "../../components/Templates/TemplateChips";
 import { formatPhoneNumber, useAppStore } from "../../store/useAppStore";
 import { useBroadcastStore } from "../../store/useBroadcastStore";
-import PageHeader from "../../components/ui/PageHeader";
+import { AppButton } from "../../ui/app-button";
+import { AppIcon } from "../../ui/app-icon";
+import { AppText } from "../../ui/app-text";
+import { AppTextInput } from "../../ui/app-text-input";
+import { Card } from "../../ui/card";
+import { ConfirmSheet, type ConfirmAction } from "../../ui/confirm-sheet";
+import { IconButton } from "../../ui/icon-button";
+import { MessageEditor } from "../../ui/message/message-editor";
+import { TemplateChips } from "../../ui/message/template-chips";
+import { PageHeader } from "../../ui/page-header";
+import { Screen } from "../../ui/screen";
+import { EmptyState, SectionHeader } from "../../ui/section-header";
+import { radius, useMetrics, useTheme } from "../../ui/theme";
 
-export default function BroadcastDetail() {
+export default function BroadcastDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const broadcastId = parseInt(id, 10);
-  const selectedCountry = useAppStore((s) => s.selectedCountry);
+  const { colors } = useTheme();
+  const { width, contentWidth, insets } = useMetrics();
+  const selectedCountry = useAppStore((state) => state.selectedCountry);
+  const setCountryPickerOpen = useAppStore((state) => state.setCountryPickerOpen);
+  const loadTemplates = useAppStore((state) => state.loadTemplates);
 
-  const message = useBroadcastStore((s) => s.message);
-  const contacts = useBroadcastStore((s) => s.contacts);
-  const loaded = useBroadcastStore((s) => s.loaded);
-  const loadDetail = useBroadcastStore((s) => s.loadDetail);
-  const setMessage = useBroadcastStore((s) => s.setMessage);
-  const addContact = useBroadcastStore((s) => s.addContact);
-  const removeContact = useBroadcastStore((s) => s.removeContact);
-  const deleteBroadcast = useBroadcastStore((s) => s.deleteBroadcast);
-  const sendToContact = useBroadcastStore((s) => s.sendToContact);
+  const message = useBroadcastStore((state) => state.message);
+  const contacts = useBroadcastStore((state) => state.contacts);
+  const loaded = useBroadcastStore((state) => state.loaded);
+  const loadDetail = useBroadcastStore((state) => state.loadDetail);
+  const setMessage = useBroadcastStore((state) => state.setMessage);
+  const addContact = useBroadcastStore((state) => state.addContact);
+  const removeContact = useBroadcastStore((state) => state.removeContact);
+  const deleteBroadcast = useBroadcastStore((state) => state.deleteBroadcast);
+  const sendToContact = useBroadcastStore((state) => state.sendToContact);
 
   const [newNumber, setNewNumber] = useState("");
-  const insets = useSafeAreaInsets();
-  const appState = useRef(AppState.currentState);
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
 
-  const load = () => {
+  const load = useCallback(() => {
     const found = loadDetail(broadcastId);
     if (!found) router.back();
-  };
+    loadTemplates();
+  }, [broadcastId, loadDetail, loadTemplates]);
 
-  useEffect(() => {
-    load();
-  }, [broadcastId, loadDetail]);
+  useFocusEffect(load);
 
-  // Track app state to detect return from WhatsApp
-  useEffect(() => {
-    const sub = AppState.addEventListener("change", (nextState) => {
-      if (appState.current.match(/inactive|background/) && nextState === "active") {
-        load(); // Refresh checklist on return
-      }
-      appState.current = nextState;
-    });
-    return () => sub.remove();
-  }, []);
+  if (!loaded) return null;
+
+  const sentCount = contacts.filter((contact) => contact.sent).length;
+  const done = contacts.length > 0 && sentCount === contacts.length;
+  const nextContact = contacts.find((contact) => !contact.sent);
+  const innerWidth = contentWidth - 32;
+  const inputWidth = Math.max(100, contentWidth - 64 - 46 - 16);
 
   const handleAddContact = () => {
     const digits = `${selectedCountry.code}${newNumber}`.replace(/\D/g, "");
@@ -56,147 +64,229 @@ export default function BroadcastDetail() {
     setNewNumber("");
   };
 
-  const handleDeleteBroadcast = () => {
-    Alert.alert("Delete broadcast?", "This will remove the draft and all contacts.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () => {
-          deleteBroadcast(broadcastId);
-          router.back();
-        },
+  const handleDelete = () => {
+    setConfirmAction({
+      title: "Delete broadcast?",
+      description: "This removes the draft and every recipient in it.",
+      confirmLabel: "Delete",
+      onConfirm: () => {
+        deleteBroadcast(broadcastId);
+        router.back();
       },
-    ]);
+    });
   };
 
-  const nextContact = contacts.find((c) => !c.sent);
-  const sentCount = contacts.filter((c) => c.sent).length;
-  const done = contacts.length > 0 && sentCount === contacts.length;
-
-  if (!loaded) return null;
-
   return (
-    <View className="flex-1 bg-white dark:bg-gray-950" style={{ paddingTop: insets.top }}>
-      <PageHeader
-        title="Broadcast"
-        right={
-          <Pressable onPress={handleDeleteBroadcast} className="p-2">
-            <Trash2 size={20} color="#ef4444" />
-          </Pressable>
-        }
-      />
-
-      {contacts.length > 0 && (
-        <View className="mb-2 px-5">
-          <View className="h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+    <Screen
+      header={
+        <PageHeader
+          title="Broadcast"
+          subtitle={contacts.length > 0 ? `${sentCount} of ${contacts.length} sent` : "New draft"}
+          actions={[
+            { name: "trash", label: "Delete", color: colors.danger, onPress: handleDelete },
+          ]}
+        />
+      }
+      overlays={
+        <>
+          {contacts.length > 0 ? (
             <View
-              className="h-full rounded-full bg-emerald-500"
-              style={{ width: `${(sentCount / contacts.length) * 100}%` }}
-            />
-          </View>
-          <Text className="mt-1 text-right text-xs text-gray-400 dark:text-gray-500">
-            {sentCount}/{contacts.length} sent
-          </Text>
-        </View>
-      )}
-
-      <View className="mb-4 px-5">
-        <TemplateChips onSelect={(text) => setMessage(broadcastId, text)} />
-        <MessageEditor
-          value={message}
-          onChangeText={(text) => setMessage(broadcastId, text)}
-          placeholder="Broadcast message..."
-        />
-      </View>
-
-      <View className="mb-3 flex-row items-center gap-2 px-5">
-        <Text className="text-base text-gray-400 dark:text-gray-500">{selectedCountry.code}</Text>
-        <TextInput
-          value={newNumber}
-          onChangeText={setNewNumber}
-          placeholder="712 345 678"
-          placeholderTextColor="#9ca3af"
-          keyboardType="phone-pad"
-          className="flex-1 rounded-xl bg-gray-50 px-4 py-3 text-base text-gray-900 dark:bg-gray-800 dark:text-gray-100"
-          maxLength={20}
-          onSubmitEditing={handleAddContact}
-          returnKeyType="done"
-        />
-        <Pressable
-          onPress={handleAddContact}
-          className="rounded-xl bg-emerald-500 p-3 active:bg-emerald-600"
-          disabled={newNumber.replace(/\D/g, "").length < 9}
-        >
-          <Plus size={18} color="#fff" />
-        </Pressable>
-      </View>
-
-      <FlatList
-        data={contacts}
-        contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 120 }}
-        keyExtractor={(c) => String(c.id)}
-        ListEmptyComponent={
-          <View className="items-center py-12">
-            <Text className="text-gray-400 dark:text-gray-500">Add contacts above to start</Text>
-          </View>
-        }
-        renderItem={({ item: c }) => (
-          <View
-            className={`mb-2 flex-row items-center rounded-xl p-4 ${c.sent ? "bg-gray-50 dark:bg-gray-800" : "bg-gray-50 dark:bg-gray-800"}`}
-          >
-            {c.sent ? <Check size={20} color="#059669" /> : <Circle size={20} color="#9ca3af" />}
-            <View className="ml-3 flex-1">
-              <Text
-                className={`text-base font-semibold ${c.sent ? "text-gray-400 dark:text-gray-500" : "text-gray-900 dark:text-gray-100"}`}
-              >
-                {c.countryCode} {formatPhoneNumber(c.phoneNumber)}
-              </Text>
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                bottom: insets.bottom + 78,
+                paddingHorizontal: 16,
+                paddingTop: 10,
+                paddingBottom: 10,
+                backgroundColor: colors.background,
+              }}
+            >
+              {done ? (
+                <Row
+                  alignment="center"
+                  spacing={8}
+                  style={{
+                    width: contentWidth,
+                    height: 52,
+                    borderRadius: radius.medium,
+                    backgroundColor: colors.accentSoft,
+                  }}
+                >
+                  <Spacer flexible />
+                  <AppIcon name="check-circle" size={18} color={colors.accent} />
+                  <AppText variant="label" color={colors.accentSoftText}>
+                    All contacts sent
+                  </AppText>
+                  <Spacer flexible />
+                </Row>
+              ) : nextContact ? (
+                <AppButton
+                  label="Send to next contact"
+                  icon="send"
+                  width={contentWidth}
+                  height={52}
+                  onPress={() => sendToContact(nextContact, message)}
+                />
+              ) : null}
             </View>
-            {!c.sent && (
-              <Pressable
-                onPress={() => sendToContact(c, message)}
-                className="flex-row items-center rounded-xl bg-emerald-500 px-4 py-2 active:bg-emerald-600"
+          ) : null}
+          <ConfirmSheet action={confirmAction} onClose={() => setConfirmAction(null)} />
+        </>
+      }
+    >
+      <ScrollView
+        direction="vertical"
+        showsIndicators={false}
+        style={{ width, paddingHorizontal: 16 }}
+      >
+        <Column
+          spacing={16}
+          style={{
+            width: contentWidth,
+            paddingTop: insets.top + 84,
+            paddingBottom: insets.bottom + 120,
+          }}
+        >
+          {contacts.length > 0 ? (
+            <Card width={contentWidth} padding={14} gap={8}>
+              <Row alignment="center" style={{ width: innerWidth }}>
+                <AppText variant="label" color={colors.textSecondary}>
+                  Progress
+                </AppText>
+                <Spacer flexible />
+                <AppText variant="label" color={colors.accent}>
+                  {`${sentCount}/${contacts.length}`}
+                </AppText>
+              </Row>
+              <Row
+                style={{
+                  width: innerWidth,
+                  height: 6,
+                  borderRadius: 3,
+                  backgroundColor: colors.surfaceMuted,
+                }}
               >
-                <SendHorizontal size={14} color="#fff" />
-                <Text className="ml-1 text-sm font-medium text-white">Send</Text>
-              </Pressable>
+                <Row
+                  style={{
+                    width: (sentCount / Math.max(1, contacts.length)) * innerWidth,
+                    height: 6,
+                    borderRadius: 3,
+                    backgroundColor: colors.accent,
+                  }}
+                />
+              </Row>
+            </Card>
+          ) : null}
+
+          <Card width={contentWidth} padding={16} gap={10}>
+            <SectionHeader title="Message" width={innerWidth} />
+            <TemplateChips onSelect={(text) => setMessage(broadcastId, text)} />
+            <MessageEditor
+              value={message}
+              onChangeText={(text) => setMessage(broadcastId, text)}
+              placeholder="Broadcast message…"
+              width={innerWidth}
+            />
+          </Card>
+
+          <Column spacing={8} style={{ width: contentWidth }}>
+            <SectionHeader title="Add recipient" width={contentWidth} />
+            <Row alignment="center" spacing={8} style={{ width: contentWidth }}>
+              <Row
+                alignment="center"
+                onPress={() => setCountryPickerOpen(true)}
+                style={{
+                  width: 64,
+                  height: 48,
+                  borderRadius: radius.small,
+                  backgroundColor: colors.surfaceMuted,
+                }}
+              >
+                <Spacer flexible />
+                <AppText variant="label">{selectedCountry.code}</AppText>
+                <Spacer flexible />
+              </Row>
+              <AppTextInput
+                value={newNumber}
+                onChangeText={setNewNumber}
+                placeholder="712 345 678"
+                keyboardType="phone-pad"
+                maxLength={20}
+                returnKeyType="done"
+                onSubmitEditing={handleAddContact}
+                style={{ width: inputWidth, height: 48 }}
+                textStyle={{ fontSize: 16 }}
+              />
+              <IconButton
+                name="plus"
+                size={18}
+                width={46}
+                height={48}
+                background={colors.accent}
+                color={colors.accentForeground}
+                disabled={newNumber.replace(/\D/g, "").length < 9}
+                onPress={handleAddContact}
+              />
+            </Row>
+          </Column>
+
+          <Column spacing={8} style={{ width: contentWidth }}>
+            <SectionHeader
+              title="Recipients"
+              width={contentWidth}
+              subtitle={contacts.length > 0 ? `${contacts.length} in this broadcast` : undefined}
+            />
+            {contacts.length === 0 ? (
+              <EmptyState
+                icon="broadcast"
+                title="No recipients yet"
+                message="Add a phone number above, then send when you’re ready."
+                width={contentWidth}
+              />
+            ) : (
+              contacts.map((contact) => (
+                <Card key={contact.id} width={contentWidth} padding={12} gap={0}>
+                  <Row alignment="center" spacing={10} style={{ width: innerWidth }}>
+                    <AppIcon
+                      name={contact.sent ? "check-circle" : "circle"}
+                      size={20}
+                      color={contact.sent ? colors.accent : colors.textTertiary}
+                    />
+                    <AppText
+                      variant="callout"
+                      color={contact.sent ? colors.textTertiary : colors.text}
+                      numberOfLines={1}
+                    >
+                      {`${contact.countryCode} ${formatPhoneNumber(contact.phoneNumber)}`}
+                    </AppText>
+                    <Spacer flexible />
+                    {!contact.sent ? (
+                      <AppButton
+                        label="Send"
+                        icon="send"
+                        variant="soft"
+                        width={82}
+                        height={34}
+                        onPress={() => sendToContact(contact, message)}
+                      />
+                    ) : null}
+                    <IconButton
+                      name="close"
+                      size={14}
+                      width={32}
+                      height={32}
+                      background="transparent"
+                      color={colors.textTertiary}
+                      onPress={() => removeContact(contact.id)}
+                    />
+                  </Row>
+                </Card>
+              ))
             )}
-            <Pressable onPress={() => removeContact(c.id)} className="ml-2 p-2">
-              <X size={16} color="#9ca3af" />
-            </Pressable>
-          </View>
-        )}
-      />
-
-      {!done && nextContact && (
-        <View
-          className="absolute right-0 bottom-0 left-0 bg-white px-5 py-4 dark:bg-gray-950"
-          style={{ paddingBottom: insets.bottom + 8 }}
-        >
-          <Pressable
-            onPress={() => sendToContact(nextContact, message)}
-            className="flex-row items-center justify-center rounded-xl bg-emerald-500 py-4 active:bg-emerald-600"
-          >
-            <SendHorizontal size={18} color="#fff" />
-            <Text className="ml-2 text-base font-semibold text-white">Send to next contact</Text>
-          </Pressable>
-        </View>
-      )}
-
-      {done && (
-        <View
-          className="absolute right-0 bottom-0 left-0 bg-white px-5 py-4 dark:bg-gray-950"
-          style={{ paddingBottom: insets.bottom + 8 }}
-        >
-          <View className="items-center rounded-xl bg-emerald-100 p-4 dark:bg-emerald-900/40">
-            <Check size={24} color="#059669" />
-            <Text className="mt-1 text-base font-semibold text-emerald-700 dark:text-emerald-400">
-              All contacts sent
-            </Text>
-          </View>
-        </View>
-      )}
-    </View>
+          </Column>
+        </Column>
+      </ScrollView>
+    </Screen>
   );
 }
