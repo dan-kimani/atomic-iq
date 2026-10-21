@@ -11,6 +11,7 @@ import { AppText } from "../app-text";
 import { Card } from "../card";
 import { CountryTrigger } from "../country/country-trigger";
 import { IconButton } from "../icon-button";
+import { Reveal } from "../motion/reveal";
 import { radius, useTheme } from "../theme";
 import type { ActionLinkItem } from "./action-link";
 import { ActionLinks } from "./action-links";
@@ -163,8 +164,8 @@ export function PhoneCard({ width, onAddNote, onSetReminder }: Props) {
         ) : null}
       </Column>
 
-      {isValid ? (
-        <>
+      <Reveal visible={isValid}>
+        <Column spacing={8} style={{ width: innerWidth }}>
           <Column spacing={2} style={{ width: innerWidth }}>
             <AppText variant="caption" color={colors.textTertiary}>
               ACTIONS
@@ -194,12 +195,12 @@ export function PhoneCard({ width, onAddNote, onSetReminder }: Props) {
               </Row>
             </Row>
 
-            {showMessage ? (
+            <Reveal visible={showMessage}>
               <MessageField value={messageText} onChangeText={setMessageText} width={innerWidth} />
-            ) : null}
+            </Reveal>
           </Column>
-        </>
-      ) : null}
+        </Column>
+      </Reveal>
 
       <Row spacing={8} style={{ width: innerWidth }}>
         <AppButton
