@@ -62,6 +62,8 @@ interface FadeHeaderProps {
   opacity?: Animated.Value | Animated.AnimatedInterpolation<number> | number;
   glowHeight?: number;
   blurTarget?: RefObject<ComponentRef<typeof View> | null>;
+  /** How far the blur feathers past the header bottom, in dp. */
+  blurTail?: number;
   children: ReactNode;
 }
 
@@ -70,10 +72,10 @@ export function FadeHeader({
   opacity = 1,
   glowHeight,
   blurTarget,
+  blurTail = 56,
   children,
 }: FadeHeaderProps) {
   const { colors, isDark } = useTheme();
-  const blurTail = 56;
   const blurHeight = height + blurTail;
   const blurFadeStart = height / blurHeight;
   const topStops = [

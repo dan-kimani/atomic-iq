@@ -47,7 +47,8 @@ export function Screen({ header, children, overlays }: ScreenProps) {
       <FadeHeader
         height={headerBottom}
         opacity={1}
-        glowHeight={headerBottom + 80}
+        glowHeight={headerBottom + 16}
+        blurTail={12}
         blurTarget={blurTargetRef}
       >
         <View style={{ paddingTop: headerTop, paddingHorizontal: pagePadding }}>
