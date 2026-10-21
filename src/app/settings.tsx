@@ -1,350 +1,416 @@
+import { Column, Row, ScrollView, Spacer, Switch } from "@expo/ui";
 import Constants from "expo-constants";
 import * as Linking from "expo-linking";
-import {
-  Bell,
-  ChevronRight,
-  Clipboard,
-  Clock,
-  Database,
-  Download,
-  Globe,
-  Heart,
-  Megaphone,
-  MessageCircle,
-  MessageSquareText,
-  Moon,
-  Shield,
-  Smartphone,
-  Star,
-  Sun,
-  Trash2,
-  Vibrate,
-  Volume2,
-} from "lucide-react-native";
-import { useState } from "react";
-import { Pressable, ScrollView, Share, Switch, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Toast from "react-native-toast-message";
+import { Children, Fragment, type ReactNode, useState } from "react";
+import { Share } from "react-native";
 
-import ConfirmSheet, { type ConfirmAction } from "../components/ConfirmSheet";
-import CountryPickerSheet from "../components/Country/CountryPickerSheet";
-import FrequencyPickerSheet from "../components/FrequencyPickerSheet";
-import Divider from "../components/ui/Divider";
-import PageHeader from "../components/ui/PageHeader";
-import SectionGroup from "../components/ui/SectionGroup";
-import SectionHeader from "../components/ui/SectionHeader";
-import SettingsRow from "../components/ui/SettingsRow";
 import { clearAllBroadcasts, clearAllRecent, clearAllReminders, clearAllTemplates } from "../db";
-import { useIsDark } from "../hooks/useIsDark";
-import { getCountryName, useAppStore } from "../store/useAppStore";
+import { useAppStore, getCountryName } from "../store/useAppStore";
+import { AppIcon } from "../ui/app-icon";
+import { AppText } from "../ui/app-text";
+import { Card } from "../ui/card";
+import { ConfirmSheet, type ConfirmAction } from "../ui/confirm-sheet";
+import { FrequencyPickerSheet } from "../ui/frequency-sheet";
+import { PageHeader } from "../ui/page-header";
+import { Screen } from "../ui/screen";
+import { SectionHeader } from "../ui/section-header";
+import { SettingsRow } from "../ui/settings/settings-row";
+import { radius, useMetrics, useTheme } from "../ui/theme";
+import { showToast } from "../ui/toast";
 
-export default function SettingsPage() {
-  const insets = useSafeAreaInsets();
-  const isDark = useIsDark();
-  const selectedCountry = useAppStore((s) => s.selectedCountry);
-  const setCountryPickerOpen = useAppStore((s) => s.setCountryPickerOpen);
-  const theme = useAppStore((s) => s.theme);
-  const setTheme = useAppStore((s) => s.setTheme);
-  const clearAllRecentContacts = useAppStore((s) => s.clearAllRecentContacts);
-  const clipboardDetection = useAppStore((s) => s.clipboardDetection);
-  const toggleClipboard = useAppStore((s) => s.toggleClipboardDetection);
-  const notificationSound = useAppStore((s) => s.notificationSound);
-  const toggleSound = useAppStore((s) => s.toggleNotificationSound);
-  const hapticFeedback = useAppStore((s) => s.hapticFeedback);
-  const toggleHaptic = useAppStore((s) => s.toggleHapticFeedback);
-  const backupFrequency = useAppStore((s) => s.backupFrequency);
-  const setBackupFrequency = useAppStore((s) => s.setBackupFrequency);
-
-  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
-  const [freqPickerOpen, setFreqPickerOpen] = useState(false);
-
+function SettingsGroup({ children, width }: { children: ReactNode; width: number }) {
+  const { colors } = useTheme();
+  const items = Children.toArray(children);
 
   return (
-    <View className="flex-1 bg-white dark:bg-gray-950" style={{ paddingTop: insets.top }}>
-      <PageHeader title="Settings" />
+    <Card width={width} padding={0} gap={0}>
+      {items.map((child, index) => (
+        <Fragment key={index}>
+          {child}
+          {index < items.length - 1 ? (
+            <Row style={{ width, height: 1, backgroundColor: colors.border }} />
+          ) : null}
+        </Fragment>
+      ))}
+    </Card>
+  );
+}
 
-      <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
-        {/* ── Preferences ──────────────────────────────────────────── */}
-        <SectionHeader title="Preferences" />
-        <SectionGroup>
-          <SettingsRow
-            icon={<Globe size={18} color="#2563eb" />}
-            label="Default country"
-            subtitle={`${getCountryName(selectedCountry.country)} (${selectedCountry.code})`}
-            onPress={() => setCountryPickerOpen(true)}
+export default function SettingsScreen() {
+  const { colors, isDark } = useTheme();
+  const { width, contentWidth, insets } = useMetrics();
+  const selectedCountry = useAppStore((state) => state.selectedCountry);
+  const setCountryPickerOpen = useAppStore((state) => state.setCountryPickerOpen);
+  const theme = useAppStore((state) => state.theme);
+  const setTheme = useAppStore((state) => state.setTheme);
+  const clearAllRecentContacts = useAppStore((state) => state.clearAllRecentContacts);
+  const clipboardDetection = useAppStore((state) => state.clipboardDetection);
+  const toggleClipboard = useAppStore((state) => state.toggleClipboardDetection);
+  const notificationSound = useAppStore((state) => state.notificationSound);
+  const toggleSound = useAppStore((state) => state.toggleNotificationSound);
+  const hapticFeedback = useAppStore((state) => state.hapticFeedback);
+  const toggleHaptic = useAppStore((state) => state.toggleHapticFeedback);
+  const backupFrequency = useAppStore((state) => state.backupFrequency);
+  const setBackupFrequency = useAppStore((state) => state.setBackupFrequency);
+
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
+  const [frequencyOpen, setFrequencyOpen] = useState(false);
+
+  const groupWidth = contentWidth;
+  const themeOptions = [
+    { key: "light" as const, label: "Light", icon: "sun" as const },
+    { key: "dark" as const, label: "Dark", icon: "moon" as const },
+    { key: "system" as const, label: "System", icon: "contrast" as const },
+  ];
+  const themeButtonWidth = Math.floor((groupWidth - 28 - 16) / 3);
+
+  const confirmClear = (
+    title: string,
+    description: string,
+    onConfirm: () => void,
+    confirmLabel = "Clear",
+  ) => {
+    setConfirmAction({
+      title,
+      description,
+      confirmLabel,
+      icon: <AppIcon name="trash" size={26} color={colors.danger} />,
+      onConfirm,
+    });
+  };
+
+  return (
+    <Screen
+      header={
+        <PageHeader
+          title="Settings"
+          subtitle={`Atomic IQ ${Constants.expoConfig?.version ?? "0.0.0"}`}
+        />
+      }
+      overlays={
+        <>
+          <ConfirmSheet action={confirmAction} onClose={() => setConfirmAction(null)} />
+          <FrequencyPickerSheet
+            visible={frequencyOpen}
+            selected={backupFrequency}
+            onSelect={setBackupFrequency}
+            onClose={() => setFrequencyOpen(false)}
           />
-          <Divider />
-          <SettingsRow
-            icon={<Clipboard size={18} color="#059669" />}
-            label="Clipboard detection"
-            subtitle="Auto-detect phone numbers from clipboard"
-            right={
-              <Switch
-                value={clipboardDetection}
-                onValueChange={toggleClipboard}
-                trackColor={{ false: "#d1d5db", true: "#059669" }}
+        </>
+      }
+    >
+      <ScrollView
+        direction="vertical"
+        showsIndicators={false}
+        style={{ width, paddingHorizontal: 16 }}
+      >
+        <Column
+          spacing={16}
+          style={{
+            width: contentWidth,
+            paddingTop: insets.top + 84,
+            paddingBottom: insets.bottom + 112,
+          }}
+        >
+          <Column spacing={8} style={{ width: contentWidth }}>
+            <SectionHeader title="Preferences" width={contentWidth} />
+            <SettingsGroup width={groupWidth}>
+              <SettingsRow
+                icon="globe"
+                label="Default country"
+                subtitle={`${getCountryName(selectedCountry.country)} (${selectedCountry.code})`}
+                tint={colors.tag}
+                soft={colors.tagSoft}
+                width={groupWidth}
+                onPress={() => setCountryPickerOpen(true)}
               />
-            }
-          />
-        </SectionGroup>
-
-        {/* ── Notifications ────────────────────────────────────────── */}
-        <SectionHeader title="Notifications" />
-        <SectionGroup>
-          <SettingsRow
-            icon={<Volume2 size={18} color="#d97706" />}
-            label="Reminder sound"
-            subtitle="Play sound for reminder notifications"
-            right={
-              <Switch
-                value={notificationSound}
-                onValueChange={toggleSound}
-                trackColor={{ false: "#d1d5db", true: "#059669" }}
+              <SettingsRow
+                icon="clipboard"
+                label="Clipboard detection"
+                subtitle="Detect phone numbers copied elsewhere"
+                tint={colors.accent}
+                soft={colors.accentSoft}
+                width={groupWidth}
+                trailing={<Switch value={clipboardDetection} onValueChange={toggleClipboard} />}
+                trailingWidth={52}
               />
-            }
-          />
-        </SectionGroup>
+            </SettingsGroup>
+          </Column>
 
-        {/* ── Appearance ───────────────────────────────────────────── */}
-        <SectionHeader title="Appearance" />
-        <SectionGroup>
-          <View className="px-5 py-4">
-            <View className="flex-row items-center">
-              <View className="h-8 w-8 items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-800">
-                {isDark ? <Moon size={18} color="#6366f1" /> : <Sun size={18} color="#f59e0b" />}
-              </View>
-              <Text className="ml-3 flex-1 text-[15px] text-gray-900 dark:text-gray-100">
-                Theme
-              </Text>
-            </View>
-            <View className="mt-3 flex-row gap-2">
-              {(
-                [
-                  { key: "light" as const, label: "Light" },
-                  { key: "dark" as const, label: "Dark" },
-                  { key: "system" as const, label: "System" },
-                ] as const
-              ).map(({ key, label }) => {
-                const active = theme === key;
-                return (
-                  <Pressable
-                    key={key}
-                    onPress={() => setTheme(key)}
-                    style={({ pressed }) => [
-                      active
-                        ? { backgroundColor: "#10b981" }
-                        : pressed
-                          ? { backgroundColor: isDark ? "#374151" : "#e5e7eb" }
-                          : { backgroundColor: isDark ? "#1f2937" : "#f3f4f6" },
-                    ]}
-                    className="flex-1 flex-row items-center justify-center gap-1.5 rounded-xl py-2.5"
-                  >
-                    {key === "light" && <Sun size={16} color={active ? "#fff" : "#f59e0b"} />}
-                    {key === "dark" && <Moon size={16} color={active ? "#fff" : "#6366f1"} />}
-                    {key === "system" && (
-                      <Smartphone size={16} color={active ? "#fff" : "#6b7280"} />
-                    )}
-                    <Text
-                      className={`text-[13px] font-semibold ${
-                        active ? "text-white" : "text-gray-500 dark:text-gray-400"
-                      }`}
+          <Column spacing={8} style={{ width: contentWidth }}>
+            <SectionHeader title="Notifications" width={contentWidth} />
+            <SettingsGroup width={groupWidth}>
+              <SettingsRow
+                icon="volume"
+                label="Reminder sound"
+                subtitle="Play a sound for follow-up notifications"
+                tint={colors.warning}
+                soft={colors.warningSoft}
+                width={groupWidth}
+                trailing={<Switch value={notificationSound} onValueChange={toggleSound} />}
+                trailingWidth={52}
+              />
+            </SettingsGroup>
+          </Column>
+
+          <Column spacing={8} style={{ width: contentWidth }}>
+            <SectionHeader title="Appearance" width={contentWidth} />
+            <Card width={groupWidth} padding={14} gap={10}>
+              <Row alignment="center" spacing={10} style={{ width: groupWidth - 28 }}>
+                <AppIcon
+                  name={isDark ? "moon" : "sun"}
+                  size={17}
+                  color={isDark ? colors.tag : colors.warning}
+                />
+                <AppText variant="callout">Theme</AppText>
+              </Row>
+              <Row spacing={8} style={{ width: groupWidth - 28 }}>
+                {themeOptions.map((option) => {
+                  const active = theme === option.key;
+                  return (
+                    <Row
+                      key={option.key}
+                      alignment="center"
+                      spacing={5}
+                      onPress={() => setTheme(option.key)}
+                      style={{
+                        width: themeButtonWidth,
+                        height: 42,
+                        borderRadius: radius.small,
+                        backgroundColor: active ? colors.accent : colors.surfaceMuted,
+                      }}
                     >
-                      {label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-          <Divider />
-          <SettingsRow
-            icon={<Vibrate size={18} color="#6b7280" />}
-            label="Haptic feedback"
-            subtitle="Vibrate on actions"
-            right={
-              <Switch
-                value={hapticFeedback}
-                onValueChange={toggleHaptic}
-                trackColor={{ false: "#d1d5db", true: "#059669" }}
+                      <Spacer flexible />
+                      <AppIcon
+                        name={option.icon}
+                        size={14}
+                        color={active ? colors.accentForeground : colors.textSecondary}
+                      />
+                      <AppText
+                        variant="label"
+                        color={active ? colors.accentForeground : colors.textSecondary}
+                      >
+                        {option.label}
+                      </AppText>
+                      <Spacer flexible />
+                    </Row>
+                  );
+                })}
+              </Row>
+            </Card>
+            <SettingsGroup width={groupWidth}>
+              <SettingsRow
+                icon="vibrate"
+                label="Haptic feedback"
+                subtitle="Vibrate on selections and outcomes"
+                width={groupWidth}
+                trailing={<Switch value={hapticFeedback} onValueChange={toggleHaptic} />}
+                trailingWidth={52}
               />
-            }
-          />
-        </SectionGroup>
+            </SettingsGroup>
+          </Column>
 
-        {/* ── Data ─────────────────────────────────────────────────── */}
-        <SectionHeader title="Data" />
-        <SectionGroup>
-          <SettingsRow
-            icon={<Trash2 size={18} color="#ef4444" />}
-            label="Clear recent contacts"
-            subtitle="Remove all saved numbers"
-            onPress={() =>
-              setConfirmAction({
-                title: "Clear recent contacts",
-                description:
-                  "This will permanently remove all saved numbers. This cannot be undone.",
-                icon: <Trash2 size={28} color="#dc2626" />,
-                onConfirm: () => {
-                  clearAllRecent();
-                  clearAllRecentContacts();
-                },
-              })
-            }
-          />
-          <Divider />
-          <SettingsRow
-            icon={<MessageSquareText size={18} color="#ef4444" />}
-            label="Clear all templates"
-            subtitle="Remove all quick responses"
-            onPress={() =>
-              setConfirmAction({
-                title: "Clear all templates",
-                description:
-                  "This will permanently remove all quick responses. This cannot be undone.",
-                icon: <MessageSquareText size={28} color="#dc2626" />,
-                onConfirm: () => clearAllTemplates(),
-              })
-            }
-          />
-          <Divider />
-          <SettingsRow
-            icon={<Bell size={18} color="#ef4444" />}
-            label="Clear all reminders"
-            subtitle="Remove all follow-up reminders"
-            onPress={() =>
-              setConfirmAction({
-                title: "Clear all reminders",
-                description:
-                  "This will permanently remove all follow-up reminders. This cannot be undone.",
-                icon: <Bell size={28} color="#dc2626" />,
-                onConfirm: () => clearAllReminders(),
-              })
-            }
-          />
-          <Divider />
-          <SettingsRow
-            icon={<Megaphone size={18} color="#ef4444" />}
-            label="Clear all broadcasts"
-            subtitle="Remove all broadcast drafts"
-            onPress={() =>
-              setConfirmAction({
-                title: "Clear all broadcasts",
-                description:
-                  "This will permanently remove all broadcast drafts and their contacts. This cannot be undone.",
-                icon: <Megaphone size={28} color="#dc2626" />,
-                onConfirm: () => clearAllBroadcasts(),
-              })
-            }
-          />
-        </SectionGroup>
+          <Column spacing={8} style={{ width: contentWidth }}>
+            <SectionHeader title="Data" width={contentWidth} />
+            <SettingsGroup width={groupWidth}>
+              <SettingsRow
+                icon="trash"
+                label="Clear recent contacts"
+                subtitle="Remove every saved number"
+                width={groupWidth}
+                tint={colors.danger}
+                soft={colors.dangerSoft}
+                destructive
+                onPress={() =>
+                  confirmClear(
+                    "Clear recent contacts?",
+                    "This permanently removes all saved numbers from this device.",
+                    () => {
+                      clearAllRecent();
+                      clearAllRecentContacts();
+                    },
+                  )
+                }
+              />
+              <SettingsRow
+                icon="templates"
+                label="Clear all templates"
+                subtitle="Remove every quick response"
+                width={groupWidth}
+                tint={colors.danger}
+                soft={colors.dangerSoft}
+                destructive
+                onPress={() =>
+                  confirmClear(
+                    "Clear all templates?",
+                    "This permanently removes every quick response.",
+                    clearAllTemplates,
+                  )
+                }
+              />
+              <SettingsRow
+                icon="bell"
+                label="Clear all reminders"
+                subtitle="Remove every follow-up reminder"
+                width={groupWidth}
+                tint={colors.danger}
+                soft={colors.dangerSoft}
+                destructive
+                onPress={() =>
+                  confirmClear(
+                    "Clear all reminders?",
+                    "This permanently removes every follow-up reminder.",
+                    clearAllReminders,
+                  )
+                }
+              />
+              <SettingsRow
+                icon="broadcast"
+                label="Clear all broadcasts"
+                subtitle="Remove every draft and recipient"
+                width={groupWidth}
+                tint={colors.danger}
+                soft={colors.dangerSoft}
+                destructive
+                onPress={() =>
+                  confirmClear(
+                    "Clear all broadcasts?",
+                    "This permanently removes every broadcast draft and its recipients.",
+                    clearAllBroadcasts,
+                  )
+                }
+              />
+            </SettingsGroup>
+          </Column>
 
-        {/* ── Backup ────────────────────────────────────────────────── */}
-        <SectionHeader title="Backup" />
-        <SectionGroup>
-          <SettingsRow
-            icon={<Database size={18} color="#2563eb" />}
-            label="Last backup"
-            subtitle="Never — back up your data to keep it safe"
-          />
-          <Divider />
-          <SettingsRow
-            icon={<Clock size={18} color="#d97706" />}
-            label="Backup frequency"
-            subtitle={backupFrequency.charAt(0).toUpperCase() + backupFrequency.slice(1)}
-            right={<ChevronRight size={16} color="#9ca3af" />}
-            onPress={() => setFreqPickerOpen(true)}
-          />
-          <Divider />
-          <SettingsRow
-            icon={<Download size={18} color="#059669" />}
-            label="Back up now"
-            subtitle="Export your data to a file"
-            onPress={() =>
-              Toast.show({
-                type: "info",
-                text1: "Coming soon",
-                text2: "Backup export will be available in a future update.",
-                visibilityTime: 2500,
-              })
-            }
-          />
-        </SectionGroup>
+          <Column spacing={8} style={{ width: contentWidth }}>
+            <SectionHeader title="Backup" width={contentWidth} />
+            <SettingsGroup width={groupWidth}>
+              <SettingsRow
+                icon="database"
+                label="Last backup"
+                subtitle="Never — keep a snapshot of your data"
+                tint={colors.tag}
+                soft={colors.tagSoft}
+                width={groupWidth}
+              />
+              <SettingsRow
+                icon="clock"
+                label="Backup frequency"
+                width={groupWidth}
+                tint={colors.warning}
+                soft={colors.warningSoft}
+                onPress={() => setFrequencyOpen(true)}
+                trailing={
+                  <AppText variant="subheadline" color={colors.textSecondary}>
+                    {backupFrequency.charAt(0).toUpperCase() + backupFrequency.slice(1)}
+                  </AppText>
+                }
+                trailingWidth={58}
+              />
+              <SettingsRow
+                icon="download"
+                label="Back up now"
+                subtitle="Export your data to a file"
+                width={groupWidth}
+                tint={colors.accent}
+                soft={colors.accentSoft}
+                onPress={() =>
+                  showToast({
+                    kind: "info",
+                    title: "Coming soon",
+                    message: "Backup export will arrive in a future update.",
+                  })
+                }
+              />
+            </SettingsGroup>
+          </Column>
 
-        {/* ── Privacy ──────────────────────────────────────────────── */}
-        <SectionHeader title="Privacy" />
-        <SectionGroup>
-          <View className="px-5 py-3.5">
-            <View className="flex-row">
-              <View className="mt-0.5 h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
-                <Shield size={18} color="#059669" />
-              </View>
-              <View className="ml-3 flex-1">
-                <Text className="text-[15px] text-gray-900 dark:text-gray-100">
-                  Your data stays on-device
-                </Text>
-                <Text className="text-[13px] leading-5 text-gray-600 dark:text-gray-500">
-                  All contacts, messages, reminders, and tags are stored locally. Nothing leaves
-                  your phone.
-                </Text>
-              </View>
-            </View>
-          </View>
-        </SectionGroup>
+          <Column spacing={8} style={{ width: contentWidth }}>
+            <SectionHeader title="Privacy" width={contentWidth} />
+            <Card width={groupWidth} padding={14} gap={8}>
+              <Row alignment="center" spacing={10} style={{ width: groupWidth - 28 }}>
+                <Row
+                  alignment="center"
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 9,
+                    backgroundColor: colors.accentSoft,
+                  }}
+                >
+                  <Spacer flexible />
+                  <AppIcon name="shield" size={17} color={colors.accent} />
+                  <Spacer flexible />
+                </Row>
+                <AppText variant="callout">Your data stays on-device</AppText>
+              </Row>
+              <AppText variant="subheadline" color={colors.textSecondary}>
+                Contacts, messages, reminders, tags and events are stored in a local SQLite
+                database. Nothing leaves this phone.
+              </AppText>
+            </Card>
+          </Column>
 
-        {/* ── Support ──────────────────────────────────────────────── */}
-        <SectionHeader title="Support" />
-        <SectionGroup>
-          <SettingsRow
-            icon={<Star size={18} color="#f59e0b" />}
-            label="Rate Atomic IQ"
-            subtitle="If you find this app useful"
-            onPress={() =>
-              Linking.openURL("https://play.google.com/store/apps/details?id=com.atomiciq.com")
-            }
-          />
-          <Divider />
-          <SettingsRow
-            icon={<Heart size={18} color="#ef4444" />}
-            label="Share with a friend"
-            subtitle="Spread the word"
-            onPress={() =>
-              Share.share({
-                message:
-                  "Check out Atomic IQ — open WhatsApp chats without saving contacts! https://atomiciq.com",
-              })
-            }
-          />
-          <Divider />
-          <SettingsRow
-            icon={<MessageCircle size={18} color="#059669" />}
-            label="Send feedback"
-            subtitle="We'd love to hear from you"
-            onPress={() =>
-              Linking.openURL(
-                "whatsapp://send?phone=254732887318&text=Hi%2C%20feedback%20about%20Atomic%20IQ...",
-              )
-            }
-          />
-        </SectionGroup>
+          <Column spacing={8} style={{ width: contentWidth }}>
+            <SectionHeader title="Support" width={contentWidth} />
+            <SettingsGroup width={groupWidth}>
+              <SettingsRow
+                icon="star"
+                label="Rate Atomic IQ"
+                subtitle="If you find it useful"
+                width={groupWidth}
+                tint={colors.warning}
+                soft={colors.warningSoft}
+                onPress={() =>
+                  Linking.openURL("https://play.google.com/store/apps/details?id=com.atomiciq.com")
+                }
+              />
+              <SettingsRow
+                icon="heart"
+                label="Share with a friend"
+                subtitle="Spread the word"
+                width={groupWidth}
+                tint={colors.danger}
+                soft={colors.dangerSoft}
+                onPress={() =>
+                  Share.share({
+                    message:
+                      "Check out Atomic IQ — open WhatsApp chats without saving contacts! https://atomiciq.com",
+                  })
+                }
+              />
+              <SettingsRow
+                icon="message"
+                label="Send feedback"
+                subtitle="We'd love to hear from you"
+                width={groupWidth}
+                tint={colors.accent}
+                soft={colors.accentSoft}
+                onPress={() =>
+                  Linking.openURL(
+                    "whatsapp://send?phone=254732887318&text=Hi%2C%20feedback%20about%20Atomic%20IQ...",
+                  )
+                }
+              />
+            </SettingsGroup>
+          </Column>
 
-        {/* ── About ────────────────────────────────────────────────── */}
-        <SectionHeader title="About" />
-        <SectionGroup>
-          <SettingsRow
-            icon={<Smartphone size={18} color="#059669" />}
-            label="Atomic IQ"
-            subtitle={`Version ${Constants.expoConfig?.version ?? "0.0.0"}`}
-          />
-        </SectionGroup>
+          <Column spacing={8} style={{ width: contentWidth }}>
+            <SectionHeader title="About" width={contentWidth} />
+            <SettingsGroup width={groupWidth}>
+              <SettingsRow
+                icon="phone-device"
+                label="Atomic IQ"
+                subtitle={`Version ${Constants.expoConfig?.version ?? "0.0.0"}`}
+                width={groupWidth}
+                tint={colors.accent}
+                soft={colors.accentSoft}
+              />
+            </SettingsGroup>
+          </Column>
+        </Column>
       </ScrollView>
-      <CountryPickerSheet />
-      <ConfirmSheet action={confirmAction} onClose={() => setConfirmAction(null)} />
-      <FrequencyPickerSheet
-        visible={freqPickerOpen}
-        selected={backupFrequency}
-        onSelect={setBackupFrequency}
-        onClose={() => setFreqPickerOpen(false)}
-      />
-    </View>
+    </Screen>
   );
 }
