@@ -13,11 +13,6 @@ module.exports = {
       output: "static",
     },
     icon: "./assets/icon.png",
-    splash: {
-      image: "./assets/splash-icon.png",
-      resizeMode: "contain",
-      backgroundColor: "#043D2C",
-    },
     android: {
       adaptiveIcon: {
         foregroundImage: "./assets/adaptive-icon.png",
@@ -42,6 +37,19 @@ module.exports = {
       "expo-router",
       "expo-sqlite",
       "expo-status-bar",
+      [
+        "expo-splash-screen",
+        {
+          image: "./assets/splash-icon.png",
+          imageWidth: 120,
+          resizeMode: "contain",
+          backgroundColor: "#043D2C",
+          dark: {
+            image: "./assets/splash-icon.png",
+            backgroundColor: "#043D2C",
+          },
+        },
+      ],
       [
         "expo-contacts",
         {
