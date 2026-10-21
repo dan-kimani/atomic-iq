@@ -24,7 +24,7 @@ module.exports = {
         backgroundColor: "#043D2C",
       },
       package: "com.atomiciq.com",
-      versionCode: 1,
+      versionCode: 2,
       permissions: [
         "READ_CONTACTS",
         "WRITE_CONTACTS",
