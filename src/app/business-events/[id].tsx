@@ -1,102 +1,78 @@
+import { Column, Row, ScrollView, Spacer } from "@expo/ui";
 import * as Linking from "expo-linking";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { Bell, Megaphone, Pencil, Plus } from "lucide-react-native";
 import { useCallback, useState } from "react";
-import { FlatList, Pressable, Text, TextInput, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import CountryPickerSheet from "../../components/Country/CountryPickerSheet";
-import EventSheet from "../../components/BusinessEvents/EventSheet";
-import MessageEditor from "../../components/Message/MessageEditor";
-import TemplateChips from "../../components/Templates/TemplateChips";
-import ConfirmSheet, { type ConfirmAction } from "../../components/ConfirmSheet";
-import PageHeader from "../../components/ui/PageHeader";
 import * as db from "../../db";
-import { useIsDark } from "../../hooks/useIsDark";
 import { useAppStore } from "../../store/useAppStore";
-import { type BusinessEventData } from "../../store/useBusinessEventStore";
 import { useBusinessEventDetailStore } from "../../store/useBusinessEventDetailStore";
 import { useBusinessEventStore } from "../../store/useBusinessEventStore";
+import { prepareEventForm } from "../../store/useEventFormStore";
+import { AppButton } from "../../ui/app-button";
+import { AppIcon } from "../../ui/app-icon";
+import { AppText } from "../../ui/app-text";
+import { AppTextInput } from "../../ui/app-text-input";
+import { EventSheet, type EventSavePayload } from "../../ui/business-events/event-sheet";
+import { fmtReminderSchedule, formatEventPhone, parseTags } from "../../ui/business-events/format";
+import { Card } from "../../ui/card";
+import { ConfirmSheet, type ConfirmAction } from "../../ui/confirm-sheet";
+import { IconButton } from "../../ui/icon-button";
+import { MessageEditor } from "../../ui/message/message-editor";
+import { TemplateChips } from "../../ui/message/template-chips";
+import { PageHeader } from "../../ui/page-header";
+import { Screen } from "../../ui/screen";
+import { EmptyState, SectionHeader } from "../../ui/section-header";
+import { radius, useMetrics, useTheme } from "../../ui/theme";
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function parseTags(tags: string | null): string[] {
-  if (!tags) return [];
-  return tags.split(",").map((t) => t.trim()).filter(Boolean);
-}
-
-function fmtReminderSchedule(event: BusinessEventData): string | null {
-  if (!event.reminderEnabled || !event.reminderInterval) return null;
-  const interval = event.reminderInterval;
-  const label = interval.charAt(0).toUpperCase() + interval.slice(1);
-  const timeParts = (event.reminderTime ?? "09:00").split(":");
-  const h = parseInt(timeParts[0] ?? "9", 10);
-  const m = parseInt(timeParts[1] ?? "0", 10);
-  const period = h >= 12 ? "PM" : "AM";
-  const dh = h % 12 || 12;
-  const timeStr = `${dh}:${m.toString().padStart(2, "0")} ${period}`;
-  if (interval === "daily") return `${label} at ${timeStr}`;
-  const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  if (interval === "weekly" || interval === "biweekly") {
-    const day = event.reminderDay != null ? DAY_LABELS[event.reminderDay] : null;
-    return day ? `${label} on ${day} at ${timeStr}` : `${label} at ${timeStr}`;
-  }
-  if (interval === "monthly") {
-    const day = event.reminderDay != null ? `${event.reminderDay}th` : null;
-    return day ? `${label} on ${day} at ${timeStr}` : `${label} at ${timeStr}`;
-  }
-  return `${label} at ${timeStr}`;
-}
-
-function formatPhone(phone: string): string {
-  const cleaned = phone.replace(/\D/g, "");
-  if (cleaned.length < 4) return phone;
-  const last = cleaned.slice(-9);
-  const groups = last.match(/^(\d{1,3})(\d{1,3})?(\d{1,4})?$/);
-  if (!groups) return phone;
-  return [groups[1], groups[2], groups[3]].filter(Boolean).join(" ");
-}
-
-// ── Page ─────────────────────────────────────────────────────────────────────
-
-export default function BusinessEventDetail() {
+export default function BusinessEventDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const eventId = parseInt(id, 10);
-  const isDark = useIsDark();
-  const insets = useSafeAreaInsets();
-  const contactNames = useAppStore((s) => s.contactNames);
-  const selectedCountry = useAppStore((s) => s.selectedCountry);
-  const setCountryPickerOpen = useAppStore((s) => s.setCountryPickerOpen);
-  const loadEvents = useBusinessEventStore((s) => s.loadEvents);
+  const { colors } = useTheme();
+  const { width, contentWidth, insets } = useMetrics();
+  const contactNames = useAppStore((state) => state.contactNames);
+  const selectedCountry = useAppStore((state) => state.selectedCountry);
+  const setCountryPickerOpen = useAppStore((state) => state.setCountryPickerOpen);
+  const loadTemplates = useAppStore((state) => state.loadTemplates);
+  const customTags = useAppStore((state) => state.customTags);
 
-  const event = useBusinessEventDetailStore((s) => s.event);
-  const contacts = useBusinessEventDetailStore((s) => s.contacts);
-  const message = useBusinessEventDetailStore((s) => s.message);
-  const loaded = useBusinessEventDetailStore((s) => s.loaded);
-  const loadDetail = useBusinessEventDetailStore((s) => s.loadDetail);
-  const setMessage = useBusinessEventDetailStore((s) => s.setMessage);
-  const addContact = useBusinessEventDetailStore((s) => s.addContact);
-  const toggleEventStatus = useBusinessEventDetailStore((s) => s.toggleEventStatus);
+  const event = useBusinessEventDetailStore((state) => state.event);
+  const contacts = useBusinessEventDetailStore((state) => state.contacts);
+  const message = useBusinessEventDetailStore((state) => state.message);
+  const loaded = useBusinessEventDetailStore((state) => state.loaded);
+  const loadDetail = useBusinessEventDetailStore((state) => state.loadDetail);
+  const setMessage = useBusinessEventDetailStore((state) => state.setMessage);
+  const addContact = useBusinessEventDetailStore((state) => state.addContact);
+  const toggleEventStatus = useBusinessEventDetailStore((state) => state.toggleEventStatus);
+
+  const loadEvents = useBusinessEventStore((state) => state.loadEvents);
+  const updateEvent = useBusinessEventStore((state) => state.updateEvent);
+  const updateEventReminder = useBusinessEventStore((state) => state.updateEventReminder);
+  const deleteEvent = useBusinessEventStore((state) => state.deleteEvent);
 
   const [newNumber, setNewNumber] = useState("");
-  const [editSheetVisible, setEditSheetVisible] = useState(false);
+  const [editVisible, setEditVisible] = useState(false);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       loadDetail(eventId);
-    }, [eventId, loadDetail]),
+      loadTemplates();
+    }, [eventId, loadDetail, loadTemplates]),
   );
 
   if (!loaded || !event) return null;
 
   const isActive = event.status === "active";
+  const reminder = fmtReminderSchedule(event);
+  const tags = parseTags(event.tags);
+  const innerWidth = contentWidth - 32;
+  const inputWidth = Math.max(100, contentWidth - 64 - 46 - 16);
 
   const handleBroadcast = () => {
     if (contacts.length === 0) return;
     const broadcastId = db.createBroadcast(message);
-    for (const c of contacts) {
-      db.addBroadcastContact(broadcastId, c.phoneNumber, c.countryCode);
+    for (const contact of contacts) {
+      db.addBroadcastContact(broadcastId, contact.phoneNumber, contact.countryCode);
     }
     router.push(`/broadcast/${broadcastId}`);
   };
@@ -105,10 +81,10 @@ export default function BusinessEventDetail() {
     setConfirmAction({
       title: isActive ? "Mark event as done?" : "Reopen event?",
       description: isActive
-        ? "Its contacts will still be available."
-        : "This event will appear in active again.",
-      icon: <Bell size={28} color={isDark ? "#6ee7b7" : "#059669"} />,
-      confirmLabel: isActive ? "Mark Done" : "Reopen",
+        ? "Its contacts remain available for future broadcasts."
+        : "This event will appear in the active list again.",
+      icon: <AppIcon name="check-circle" size={26} color={colors.accent} />,
+      confirmLabel: isActive ? "Mark done" : "Reopen",
       destructive: false,
       onConfirm: () => {
         toggleEventStatus(eventId);
@@ -117,8 +93,31 @@ export default function BusinessEventDetail() {
     });
   };
 
-  const handleEditSaved = () => {
-    setEditSheetVisible(false);
+  const handleDelete = () => {
+    setConfirmAction({
+      title: "Delete event?",
+      description: "The event is removed. Contacts and their tags stay in recents.",
+      confirmLabel: "Delete",
+      onConfirm: () => {
+        deleteEvent(eventId);
+        loadEvents();
+        router.back();
+      },
+    });
+  };
+
+  const handleSheetSave = async (data: EventSavePayload) => {
+    setEditVisible(false);
+    const tagsValue = data.tags.length > 0 ? data.tags.join(",") : null;
+    updateEvent(eventId, { name: data.name, period: data.period, tags: tagsValue });
+    loadEvents();
+    await updateEventReminder(
+      eventId,
+      data.reminderEnabled,
+      data.reminderInterval,
+      data.reminderTime,
+      data.reminderDay,
+    );
     loadDetail(eventId);
     loadEvents();
   };
@@ -136,179 +135,222 @@ export default function BusinessEventDetail() {
   };
 
   return (
-    <View className="flex-1 bg-white dark:bg-gray-950" style={{ paddingTop: insets.top }}>
-      <PageHeader
-        title={event.name}
-        right={
-          <Pressable
-            onPress={() => setEditSheetVisible(true)}
-            className="rounded-xl bg-gray-100 p-2 active:bg-gray-200 dark:bg-gray-700 dark:active:bg-gray-600"
-          >
-            <Pencil size={20} color={isDark ? "#9ca3af" : "#6b7280"} />
-          </Pressable>
-        }
-      />
-
-      {/* Event info card */}
-      <View className="mx-5 mb-4 rounded-xl bg-gray-50 p-4 dark:bg-gray-800">
-        {event.period && (
-          <Text className="text-sm text-gray-500 dark:text-gray-400">{event.period}</Text>
-        )}
-        <View className="mt-1 flex-row flex-wrap items-center gap-2">
-          <View
-            className={`rounded-full px-2 py-0.5 ${
-              isActive ? "bg-emerald-100 dark:bg-emerald-900/40" : "bg-gray-200 dark:bg-gray-700"
-            }`}
-          >
-            <Text
-              className={`text-xs font-medium ${
-                isActive ? "text-emerald-700 dark:text-emerald-400" : "text-gray-500 dark:text-gray-400"
-              }`}
-            >
-              {isActive ? "Active" : "Done"}
-            </Text>
-          </View>
-          {fmtReminderSchedule(event) && (
-            <View className="flex-row items-center gap-1">
-              <Bell size={11} color={isDark ? "#fbbf24" : "#d97706"} />
-              <Text className="text-xs text-amber-600 dark:text-amber-400">
-                {fmtReminderSchedule(event)}
-              </Text>
-            </View>
-          )}
-        </View>
-        {parseTags(event.tags).length > 0 && (
-          <View className="mt-2 flex-row flex-wrap gap-1">
-            {parseTags(event.tags).map((t) => (
-              <View key={t} className="rounded-md bg-gray-200 px-1.5 py-0.5 dark:bg-gray-700">
-                <Text className="text-[11px] text-gray-600 dark:text-gray-400">{t}</Text>
-              </View>
-            ))}
-          </View>
-        )}
-        <Text className="mt-2 text-sm text-gray-400 dark:text-gray-500">
-          {contacts.length} contact{contacts.length === 1 ? "" : "s"}
-        </Text>
-        <View className="mt-4 flex-row gap-3">
-          <Pressable
-            onPress={handleToggleStatus}
-            className="flex-1 items-center rounded-xl bg-gray-200 py-3 active:bg-gray-300 dark:bg-gray-700 dark:active:bg-gray-600"
-          >
-            <Text className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-              {isActive ? "Mark Done" : "Reopen"}
-            </Text>
-          </Pressable>
-          {contacts.length > 0 && (
-            <Pressable
-              onPress={handleBroadcast}
-              className="flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-emerald-500 py-3 active:bg-emerald-600"
-            >
-              <Megaphone size={16} color="#fff" />
-              <Text className="text-sm font-semibold text-white">Broadcast</Text>
-            </Pressable>
-          )}
-        </View>
-      </View>
-
-      {/* Message */}
-      <View className="mx-5 mb-4">
-        <TemplateChips onSelect={(text) => setMessage(text)} />
-        <MessageEditor
-          value={message}
-          onChangeText={setMessage}
-          placeholder="Broadcast message..."
+    <Screen
+      header={
+        <PageHeader
+          title={event.name}
+          subtitle={event.period ?? undefined}
+          actions={[
+            {
+              name: "edit",
+              label: "Edit event",
+              onPress: () => {
+                prepareEventForm(event, customTags);
+                setEditVisible(true);
+              },
+            },
+            {
+              name: "trash",
+              label: "Delete event",
+              color: colors.danger,
+              onPress: handleDelete,
+            },
+          ]}
         />
-      </View>
-
-      {/* Add contact */}
-      <View className="mx-5 mb-4 flex-row items-center gap-2">
-        <Pressable
-          onPress={() => setCountryPickerOpen(true)}
-          className="rounded-xl bg-gray-100 px-3 py-3 active:bg-gray-200 dark:bg-gray-700 dark:active:bg-gray-600"
+      }
+      overlays={
+        <>
+          <EventSheet
+            visible={editVisible}
+            editEvent={event}
+            onClose={() => setEditVisible(false)}
+            onSave={handleSheetSave}
+          />
+          <ConfirmSheet action={confirmAction} onClose={() => setConfirmAction(null)} />
+        </>
+      }
+    >
+      <ScrollView
+        direction="vertical"
+        showsIndicators={false}
+        style={{ width, paddingHorizontal: 16 }}
+      >
+        <Column
+          spacing={16}
+          style={{
+            width: contentWidth,
+            paddingTop: insets.top + 84,
+            paddingBottom: insets.bottom + 112,
+          }}
         >
-          <Text className="text-base font-semibold text-gray-700 dark:text-gray-200">
-            {selectedCountry.code}
-          </Text>
-        </Pressable>
-        <TextInput
-          value={newNumber}
-          onChangeText={setNewNumber}
-          placeholder="712 345 678"
-          placeholderTextColor="#9ca3af"
-          keyboardType="phone-pad"
-          className="flex-1 rounded-xl bg-gray-50 px-4 py-3 text-base text-gray-900 dark:bg-gray-800 dark:text-gray-100"
-          maxLength={20}
-          onSubmitEditing={handleAddContact}
-          returnKeyType="done"
-        />
-        <Pressable
-          onPress={handleAddContact}
-          className="rounded-xl bg-emerald-500 p-3 active:bg-emerald-600"
-          disabled={newNumber.replace(/\D/g, "").length < 9}
-        >
-          <Plus size={18} color="#fff" />
-        </Pressable>
-      </View>
+          <Card width={contentWidth} padding={16} gap={10}>
+            <Row alignment="center" spacing={8} style={{ width: innerWidth }}>
+              <Row
+                alignment="center"
+                style={{
+                  height: 26,
+                  paddingHorizontal: 10,
+                  borderRadius: radius.pill,
+                  backgroundColor: isActive ? colors.accentSoft : colors.surfaceMuted,
+                }}
+              >
+                <AppText
+                  variant="caption"
+                  color={isActive ? colors.accentSoftText : colors.textSecondary}
+                >
+                  {isActive ? "Active" : "Done"}
+                </AppText>
+              </Row>
+              <Spacer flexible />
+              <AppText variant="caption" color={colors.textTertiary}>
+                {`${contacts.length} contact${contacts.length === 1 ? "" : "s"}`}
+              </AppText>
+            </Row>
+            {reminder ? (
+              <Row alignment="center" spacing={5}>
+                <AppIcon name="bell" size={12} color={colors.warning} />
+                <AppText variant="subheadline" color={colors.warningSoftText}>
+                  {reminder}
+                </AppText>
+              </Row>
+            ) : null}
+            {tags.length > 0 ? (
+              <AppText variant="caption" color={colors.tagSoftText}>
+                {tags.map((tag) => `#${tag}`).join("  ")}
+              </AppText>
+            ) : null}
+            <Row spacing={10} style={{ width: innerWidth }}>
+              <AppButton
+                label={isActive ? "Mark done" : "Reopen"}
+                variant="secondary"
+                width={(innerWidth - 10) / 2}
+                height={46}
+                onPress={handleToggleStatus}
+              />
+              <AppButton
+                label="Broadcast"
+                icon="broadcast"
+                width={(innerWidth - 10) / 2}
+                height={46}
+                disabled={contacts.length === 0}
+                onPress={handleBroadcast}
+              />
+            </Row>
+          </Card>
 
-      {/* Contacts list */}
-      <FlatList
-        data={contacts}
-        contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
-        keyExtractor={(c) => `${c.countryCode}${c.phoneNumber}`}
-        ListHeaderComponent={
-          <Text className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-            Contacts
-          </Text>
-        }
-        ListEmptyComponent={
-          <View className="items-center py-16">
-            <Text className="text-base text-gray-400 dark:text-gray-500">
-              No contacts match this event's tags
-            </Text>
-            <Text className="mt-1 text-sm text-gray-400 dark:text-gray-500">
-              Add a contact above to tag them automatically
-            </Text>
-          </View>
-        }
-        renderItem={({ item: c }) => {
-          const name = getContactName(c.phoneNumber);
-          return (
-            <Pressable
-              onPress={() => {
-                const digits = `${c.countryCode}${c.phoneNumber}`.replace(/\D/g, "");
-                Linking.openURL(`whatsapp://send?phone=+${digits}`);
-              }}
-              className="mb-2 rounded-xl bg-gray-50 p-4 active:opacity-80 dark:bg-gray-800"
-            >
-              {name ? (
-                <>
-                  <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">
-                    {name}
-                  </Text>
-                  <Text className="text-sm text-gray-400 dark:text-gray-500">
-                    {c.countryCode} {formatPhone(c.phoneNumber)}
-                  </Text>
-                </>
-              ) : (
-                <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">
-                  {c.countryCode} {formatPhone(c.phoneNumber)}
-                </Text>
-              )}
-            </Pressable>
-          );
-        }}
-      />
+          <Card width={contentWidth} padding={16} gap={10}>
+            <SectionHeader title="Message" width={innerWidth} />
+            <TemplateChips onSelect={setMessage} />
+            <MessageEditor
+              value={message}
+              onChangeText={setMessage}
+              placeholder="Broadcast message…"
+              width={innerWidth}
+            />
+          </Card>
 
-      <EventSheet
-        visible={editSheetVisible}
-        editEvent={event}
-        onClose={() => setEditSheetVisible(false)}
-        onSave={handleEditSaved}
-      />
+          <Column spacing={8} style={{ width: contentWidth }}>
+            <SectionHeader title="Add contact" width={contentWidth} />
+            <Row alignment="center" spacing={8} style={{ width: contentWidth }}>
+              <Row
+                alignment="center"
+                onPress={() => setCountryPickerOpen(true)}
+                style={{
+                  width: 64,
+                  height: 48,
+                  borderRadius: radius.small,
+                  backgroundColor: colors.surfaceMuted,
+                }}
+              >
+                <Spacer flexible />
+                <AppText variant="label">{selectedCountry.code}</AppText>
+                <Spacer flexible />
+              </Row>
+              <AppTextInput
+                value={newNumber}
+                onChangeText={setNewNumber}
+                placeholder="712 345 678"
+                keyboardType="phone-pad"
+                maxLength={20}
+                returnKeyType="done"
+                onSubmitEditing={handleAddContact}
+                style={{ width: inputWidth, height: 48 }}
+                textStyle={{ fontSize: 16 }}
+              />
+              <IconButton
+                name="plus"
+                size={18}
+                width={46}
+                height={48}
+                background={colors.accent}
+                color={colors.accentForeground}
+                disabled={newNumber.replace(/\D/g, "").length < 9}
+                onPress={handleAddContact}
+              />
+            </Row>
+          </Column>
 
-      <ConfirmSheet action={confirmAction} onClose={() => setConfirmAction(null)} />
-
-      <CountryPickerSheet />
-    </View>
+          <Column spacing={8} style={{ width: contentWidth }}>
+            <SectionHeader
+              title="Contacts"
+              width={contentWidth}
+              subtitle="Numbers tagged with this event’s interests"
+            />
+            {contacts.length === 0 ? (
+              <EmptyState
+                icon="events"
+                title="No matching contacts"
+                message="Add a contact above to tag them automatically."
+                width={contentWidth}
+              />
+            ) : (
+              contacts.map((contact) => {
+                const name = getContactName(contact.phoneNumber);
+                return (
+                  <Card
+                    key={`${contact.countryCode}${contact.phoneNumber}`}
+                    width={contentWidth}
+                    padding={12}
+                    gap={0}
+                    onPress={() => {
+                      const digits = `${contact.countryCode}${contact.phoneNumber}`.replace(
+                        /\D/g,
+                        "",
+                      );
+                      Linking.openURL(`whatsapp://send?phone=+${digits}`);
+                    }}
+                  >
+                    <Row alignment="center" spacing={8} style={{ width: innerWidth }}>
+                      <Column spacing={2} style={{ width: innerWidth - 40 }}>
+                        {name ? (
+                          <>
+                            <AppText variant="bodyStrong" numberOfLines={1}>
+                              {name}
+                            </AppText>
+                            <AppText
+                              variant="subheadline"
+                              color={colors.textSecondary}
+                              numberOfLines={1}
+                            >
+                              {`${contact.countryCode} ${formatEventPhone(contact.phoneNumber)}`}
+                            </AppText>
+                          </>
+                        ) : (
+                          <AppText variant="bodyStrong" numberOfLines={1}>
+                            {`${contact.countryCode} ${formatEventPhone(contact.phoneNumber)}`}
+                          </AppText>
+                        )}
+                      </Column>
+                      <Spacer flexible />
+                      <AppIcon name="chevron-right" size={16} color={colors.textTertiary} />
+                    </Row>
+                  </Card>
+                );
+              })
+            )}
+          </Column>
+        </Column>
+      </ScrollView>
+    </Screen>
   );
 }
