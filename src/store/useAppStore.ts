@@ -131,6 +131,8 @@ export const formatPhoneNumber = (value: string): string => {
 const DEFAULT_SELECTED_COUNTRY: Country = { code: "+254", country: "KE", flag: "🇰🇪" };
 const CONTACT_NAMES_CACHE_KEY = "contactNamesCache";
 
+const RECENT_CONTACTS_PAGE_SIZE = 20;
+
 type RecentContactRow = ReturnType<typeof db.getRecentContacts>[number];
 
 function mapRecentContact(contact: RecentContactRow): RecentContactData {
@@ -303,6 +305,7 @@ interface AppStore {
   selectedCountry: Country;
   selectedCountryCode: string;
   recentContacts: RecentContactData[];
+  recentContactsHasMore: boolean;
   isCountryPickerOpen: boolean;
   messageText: string;
   contactNames: Record<string, string>;
@@ -352,6 +355,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   contactNames: {},
   templates: [],
   recentContacts: [],
+  recentContactsHasMore: false,
   hydrated: false,
 
   customTags: [],
@@ -593,13 +597,17 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
 
     try {
-      set({ recentContacts: readRecentContacts(20, 0) });
+      const firstPage = readRecentContacts(RECENT_CONTACTS_PAGE_SIZE, 0);
+      set({
+        recentContacts: firstPage,
+        recentContactsHasMore: firstPage.length === RECENT_CONTACTS_PAGE_SIZE,
+      });
       // Names come from the device and can take a while; render the rows first
       // and fill in names when the query resolves.
       void get().refreshContactNames();
     } catch (error) {
       console.error("Failed to load recent contacts:", error);
-      set({ recentContacts: [] });
+      set({ recentContacts: [], recentContactsHasMore: false });
     }
   },
 
@@ -613,11 +621,18 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   loadMoreRecentContacts: () => {
+    if (!get().recentContactsHasMore) return;
     const current = get().recentContacts;
-    const newContacts = readRecentContacts(20, current.length);
-    if (newContacts.length === 0) return;
+    const newContacts = readRecentContacts(RECENT_CONTACTS_PAGE_SIZE, current.length);
+    if (newContacts.length === 0) {
+      set({ recentContactsHasMore: false });
+      return;
+    }
 
-    set({ recentContacts: [...current, ...newContacts] });
+    set({
+      recentContacts: [...current, ...newContacts],
+      recentContactsHasMore: newContacts.length === RECENT_CONTACTS_PAGE_SIZE,
+    });
     writeContactNamesCache(get().contactNames, get().recentContacts);
   },
 
@@ -649,7 +664,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   clearAllRecentContacts: async () => {
     try {
       db.clearAllRecent();
-      set({ recentContacts: [] });
+      set({ recentContacts: [], recentContactsHasMore: false });
       writeContactNamesCache(get().contactNames, []);
       haptics.notificationAsync(NotificationFeedbackType.Success);
     } catch (error) {
@@ -683,7 +698,7 @@ export function hydrateAppStore(): Promise<void> {
     }
 
     const persisted = readPersistedSettings();
-    const recentContacts = readRecentContacts(20, 0);
+    const recentContacts = readRecentContacts(RECENT_CONTACTS_PAGE_SIZE, 0);
     const cachedNames = readContactNamesCache();
 
     let templates: { id: number; text: string }[] = [];
@@ -705,6 +720,7 @@ export function hydrateAppStore(): Promise<void> {
     useAppStore.setState({
       ...persisted,
       recentContacts,
+      recentContactsHasMore: recentContacts.length === RECENT_CONTACTS_PAGE_SIZE,
       contactNames: cachedNames ?? {},
       templates,
       customTags,

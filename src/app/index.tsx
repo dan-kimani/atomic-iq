@@ -1,17 +1,15 @@
-import { Column, Host, Row, Spacer } from "@expo/ui";
+import { Column, Host, Row } from "@expo/ui";
 import { BlurTargetView } from "expo-blur";
 import * as Linking from "expo-linking";
 import { router } from "expo-router";
 import { useEffect, useRef, useState, type ComponentRef } from "react";
-import { Animated, View } from "react-native";
+import { Animated, View, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
 
 import { saveContact as saveRecentContact, updateContactNote, updateContactTags } from "../db";
 import { haptics, NotificationFeedbackType } from "../lib/haptics";
 import { useAppStore } from "../store/useAppStore";
 import { prepareReminderForm } from "../store/useReminderStore";
 import { ActionSheet, type SheetAction } from "../ui/action-sheet";
-import { AppButton } from "../ui/app-button";
-import { AppIcon } from "../ui/app-icon";
 import { AppText } from "../ui/app-text";
 import { ConfirmSheet, type ConfirmAction } from "../ui/confirm-sheet";
 import { type RecentContact } from "../ui/contacts/contact-row";
@@ -36,10 +34,10 @@ export default function HomeScreen() {
   const openWhatsApp = useAppStore((state) => state.openWhatsApp);
   const openDialer = useAppStore((state) => state.openDialer);
   const saveContact = useAppStore((state) => state.saveContact);
-  const clearAllRecentContacts = useAppStore((state) => state.clearAllRecentContacts);
   const contactNames = useAppStore((state) => state.contactNames);
   const loadRecentContacts = useAppStore((state) => state.loadRecentContacts);
   const loadMoreRecentContacts = useAppStore((state) => state.loadMoreRecentContacts);
+  const recentContactsHasMore = useAppStore((state) => state.recentContactsHasMore);
   const addCustomTag = useAppStore((state) => state.addCustomTag);
   const customTags = useAppStore((state) => state.customTags);
   const rawPhoneNumber = useAppStore((state) => state.rawPhoneNumber);
@@ -62,7 +60,7 @@ export default function HomeScreen() {
     contactName?: string;
   } | null>(null);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
-  const [showAllRecents, setShowAllRecents] = useState(false);
+  const lastRecentLoadAt = useRef(0);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMounted, setSearchMounted] = useState(false);
@@ -210,15 +208,25 @@ export default function HomeScreen() {
         return name.includes(query) || (queryDigits.length > 0 && digits.includes(queryDigits));
       })
     : recentContacts;
-  const visibleContacts =
-    query || showAllRecents || searchOpen ? matchedContacts : matchedContacts.slice(0, 3);
-  const canExpand = !searchOpen && query.length === 0 && recentContacts.length > 3;
   const recentTitle = query ? "Search results" : searchOpen ? "Search contacts" : "Recent";
 
   const headerHeight = insets.top + 12 + 61;
   const contentTop = headerHeight + 12;
   const { opacity: headerOpacity, onScroll } = useScrollFade(40, searchOpen);
   const blurTargetRef = useRef<ComponentRef<typeof View>>(null);
+
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    onScroll(event);
+    if (searchOpen || !recentContactsHasMore) return;
+
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    if (contentOffset.y + layoutMeasurement.height < contentSize.height - 280) return;
+
+    const now = Date.now();
+    if (now - lastRecentLoadAt.current < 400) return;
+    lastRecentLoadAt.current = now;
+    loadMoreRecentContacts();
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -248,7 +256,7 @@ export default function HomeScreen() {
       <BlurTargetView ref={blurTargetRef} style={{ flex: 1 }}>
         <Animated.ScrollView
           key={searchOpen ? "search" : "home"}
-          onScroll={onScroll}
+          onScroll={handleScroll}
           scrollEventThrottle={16}
           showsVerticalScrollIndicator={false}
           style={{ flex: 1 }}
@@ -321,24 +329,6 @@ export default function HomeScreen() {
                   <AppText variant="headline" numberOfLines={1}>
                     {recentTitle}
                   </AppText>
-                  <Spacer flexible />
-                  {canExpand ? (
-                    <Row
-                      alignment="center"
-                      spacing={2}
-                      onPress={() => setShowAllRecents((value) => !value)}
-                      style={{ height: 28 }}
-                    >
-                      <AppText variant="subheadline" color={colors.textSecondary}>
-                        {showAllRecents ? "Show less" : "See all"}
-                      </AppText>
-                      <AppIcon
-                        name={showAllRecents ? "chevron-up" : "chevron-right"}
-                        size={15}
-                        color={colors.textSecondary}
-                      />
-                    </Row>
-                  ) : null}
                 </Row>
 
                 {recentContacts.length === 0 ? (
@@ -348,7 +338,7 @@ export default function HomeScreen() {
                     message="Numbers you message or call will appear here."
                     width={contentWidth}
                   />
-                ) : visibleContacts.length === 0 ? (
+                ) : matchedContacts.length === 0 ? (
                   <EmptyState
                     icon="search"
                     title="No contacts found"
@@ -357,7 +347,7 @@ export default function HomeScreen() {
                   />
                 ) : (
                   <RecentContactsCard
-                    contacts={visibleContacts}
+                    contacts={matchedContacts}
                     width={contentWidth}
                     getContactName={(contact) => getContactName(contact)}
                     onSelect={handleSelectRecent}
@@ -365,35 +355,6 @@ export default function HomeScreen() {
                     onWhatsApp={(contact) => openWhatsApp(contact.countryCode, contact.phoneNumber)}
                   />
                 )}
-
-                {!searchOpen && showAllRecents && recentContacts.length > 0 ? (
-                  <Row
-                    alignment="center"
-                    onPress={() =>
-                      setConfirmAction({
-                        title: "Clear recent contacts?",
-                        description: "This permanently removes all saved numbers from this device.",
-                        confirmLabel: "Clear all",
-                        onConfirm: clearAllRecentContacts,
-                      })
-                    }
-                    style={{ height: 30 }}
-                  >
-                    <AppText variant="subheadline" color={colors.danger}>
-                      Clear all recent contacts
-                    </AppText>
-                  </Row>
-                ) : null}
-
-                {!searchOpen && showAllRecents && !query && recentContacts.length >= 20 ? (
-                  <AppButton
-                    label="Load more"
-                    variant="ghost"
-                    width={contentWidth}
-                    height={42}
-                    onPress={loadMoreRecentContacts}
-                  />
-                ) : null}
               </Column>
             </Host>
           </View>
