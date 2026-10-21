@@ -57,7 +57,7 @@ react {
     // hermesCommand = "$rootDir/my-custom-hermesc/bin/hermesc"
     //
     //   The list of flags to pass to the Hermes compiler. By default is "-O", "-output-source-map"
-    hermesFlags = ["-O"]
+    // hermesFlags = ["-O", "-output-source-map"]
 
     /* Autolinking */
     autolinkLibrariesWithApp()
@@ -93,7 +93,7 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
-        versionName "0.0.4"
+        versionName "0.0.6"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
@@ -104,46 +104,27 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
-        release {
-            def keystorePropsFile = file('keystore.properties')
-            def keystoreProps = new Properties()
-            if (keystorePropsFile.exists()) {
-                keystoreProps.load(new FileInputStream(keystorePropsFile))
-            }
-            storeFile keystoreProps['storeFile'] ? file(keystoreProps['storeFile']) : file('debug.keystore')
-            storePassword keystoreProps['storePassword'] ?: 'android'
-            keyAlias keystoreProps['keyAlias'] ?: 'androiddebugkey'
-            keyPassword keystoreProps['keyPassword'] ?: 'android'
-        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            signingConfig signingConfigs.release
+            // Caution! In production, you need to generate your own keystore file.
+            // see https://reactnative.dev/docs/signed-apk-android.
+            signingConfig signingConfigs.debug
             def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
             shrinkResources enableShrinkResources.toBoolean()
             minifyEnabled enableMinifyInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
             def enablePngCrunchInRelease = findProperty('android.enablePngCrunchInReleaseBuilds') ?: 'true'
             crunchPngs enablePngCrunchInRelease.toBoolean()
-            // Strip native debug symbols via NDK configuration
-            ndk {
-                debugSymbolLevel 'SYMBOL_TABLE'
-            }
         }
     }
     packagingOptions {
         jniLibs {
             def enableLegacyPackaging = findProperty('expo.useLegacyPackaging') ?: 'false'
             useLegacyPackaging enableLegacyPackaging.toBoolean()
-            // Exclude Hermes inspector/debugger from release builds
-            excludes += ['**/libhermestooling.so', '**/libhermes-inspector.so']
-        }
-        // Exclude unnecessary metadata
-        resources {
-            excludes += ['META-INF/DEPENDENCIES', 'META-INF/LICENSE', 'META-INF/LICENSE.txt', 'META-INF/NOTICE', 'META-INF/NOTICE.txt', 'META-INF/*.kotlin_module', 'DebugProbesKt.bin']
         }
     }
     androidResources {

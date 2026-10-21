@@ -9,9 +9,6 @@
   "arrowParens": "always",
   "endOfLine": "lf",
   "insertFinalNewline": true,
-  "sortTailwindcss": {
-    "stylesheet": "./src/global.css"
-  },
   "sortImports": {
     "groups": [
       "side_effect",
@@ -24,5 +21,15 @@
     ],
     "internalPattern": ["@/", "~/"]
   },
-  "ignorePatterns": ["node_modules", ".expo", "dist", "web-build", "build", "assets", "app-example", "uniwind-types.d.ts"]
+  "ignorePatterns": [
+    "node_modules",
+    ".expo",
+    "dist",
+    "web-build",
+    "build",
+    "assets",
+    "app-example",
+    ".tmp",
+    ".tmp/**"
+  ]
 }

@@ -54,6 +54,7 @@
     "babel.config.js",
     "metro.config.js",
     "drizzle.config.ts",
-    "uniwind-types.d.ts"
+    ".tmp",
+    ".tmp/**"
   ]
 }
