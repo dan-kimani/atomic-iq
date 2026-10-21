@@ -1,6 +1,6 @@
 # Atomic IQ 💬
 
-Reach your customers on WhatsApp in seconds — no contact clutter, no friction. Chat, call, broadcast, and schedule follow-ups without saving a single number. Built for business owners who move fast. Built with **Expo**, **Uniwind**, and **SQLite** (Drizzle ORM).
+Reach your customers on WhatsApp in seconds — no contact clutter, no friction. Chat, call, broadcast, and schedule follow-ups without saving a single number. Built for business owners who move fast. Built with **Expo**, **@expo/ui**, and **SQLite** (Drizzle ORM).
 
 ## 👤 Who This Is For
 
@@ -45,34 +45,19 @@ You run a business and your customers are on WhatsApp. You need to reach them qu
 
 ---
 
-## 📸 Screenshots
-
-|                                Home Screen                                |                                     Smart Clipboard                                      |                                   Start Chat                                   |
-| :-----------------------------------------------------------------------: | :--------------------------------------------------------------------------------------: | :----------------------------------------------------------------------------: |
-| <img src="./assets/screenshots/home.png" width="250" alt="Home Screen" /> | <img src="./assets/screenshots/cliboard-number.png" width="250" alt="Smart Clipboard" /> | <img src="./assets/screenshots/start-chat.png" width="250" alt="Start Chat" /> |
-
-|                                     Recent Contacts                                      |                                     Swipe to Delete                                      |
-| :--------------------------------------------------------------------------------------: | :--------------------------------------------------------------------------------------: |
-| <img src="./assets/screenshots/recent-contacts.png" width="250" alt="Recent Contacts" /> | <img src="./assets/screenshots/swipe-to-delete.png" width="250" alt="Swipe to Delete" /> |
-
----
-
 ## 🛠️ Tech Stack
 
-- **Framework**: [Expo SDK 56](https://expo.dev) + [React Native 0.85](https://reactnative.dev)
-- **Styling**: [TailwindCSS 4](https://tailwindcss.com) + [Uniwind](https://uniwind.dev)
+- **Framework**: [Expo SDK 56](https://expo.dev) + [React Native 0.85](https://reactnative.dev) + [Expo Router](https://docs.expo.dev/router/introduction/)
+- **UI**: [@expo/ui](https://docs.expo.dev/versions/latest/sdk/ui/) — every visible component is a native SwiftUI / Jetpack Compose primitive hosted through `@expo/ui`
+- **Icons**: [@expo/ui Icon](https://docs.expo.dev/versions/latest/sdk/ui/) with SF Symbols on iOS and [@expo/material-symbols](https://github.com/expo/material-symbols) on Android
 - **State Management**: [Zustand](https://github.com/pmndrs/zustand)
 - **Database**: [Expo SQLite](https://docs.expo.dev/versions/latest/sdk/sqlite/) + [Drizzle ORM](https://orm.drizzle.team)
-- **Animations**: [React Native Reanimated 4](https://docs.swmansion.com/react-native-reanimated/) + [Gesture Handler](https://docs.swmansion.com/react-native-gesture-handler/)
-- **Icons**: [Lucide React Native](https://lucide.dev)
-- **Notifications**: [Expo Notifications](https://docs.expo.dev/versions/latest/sdk/notifications/) — local push notifications for follow-up reminders
-- **Countries**: [react-native-country-picker-modal](https://github.com/xcarpentier/react-native-country-picker-modal) + [react-native-country-flag](https://github.com/Chinapy/react-native-country-flag)
+- **Notifications**: [Expo Notifications](https://docs.expo.dev/versions/latest/sdk/notifications/) — local notifications for follow-up reminders
+- **Countries**: [react-native-country-picker-modal](https://github.com/xcarpentier/react-native-country-picker-modal) (country dataset only; all picker UI is `@expo/ui`)
 - **Clipboard**: [Expo Clipboard](https://docs.expo.dev/versions/latest/sdk/clipboard/)
 - **Haptics**: [Expo Haptics](https://docs.expo.dev/versions/latest/sdk/haptics/)
 - **Device Contacts**: [Expo Contacts](https://docs.expo.dev/versions/latest/sdk/contacts/) + [Expo Intent Launcher](https://docs.expo.dev/versions/latest/sdk/intent-launcher/) (Android save-contact intent)
 - **Date Formatting**: [date-fns](https://date-fns.org)
-- **Toast Messages**: [react-native-toast-message](https://github.com/calintamas/react-native-toast-message)
-- **UI Primitives**: [@expo/ui](https://docs.expo.dev/versions/latest/sdk/ui/)
 
 ---
 
@@ -178,48 +163,75 @@ This will generate `build/atomiciq.aab`.
 ```sh
 src/
 ├── app/                    # Expo Router file-based navigation
-│   ├── _layout.tsx         # Root layout — gesture handler, theme, notification tap handler
-│   ├── index.tsx           # Home screen — phone input, country picker, call/WhatsApp buttons
-│   ├── broadcast/          # Broadcast (multi-recipient messaging)
-│   │   ├── broadcast.tsx   #   Broadcast list with progress indicators
-│   │   ├── [id].tsx        #   Broadcast detail — message composer + recipient checklist
-│   │   └── new.tsx         #   Creates a blank broadcast, redirects to detail
-│   ├── reminders.tsx       # Follow-up reminders — overdue / upcoming / completed sections
-│   └── templates.tsx       # Quick response templates — add, edit, copy, delete
-├── components/             # Reusable UI components
-│   ├── AppHeader.tsx       #   Safe-area header with app title and 3 nav icon buttons
-│   ├── PhoneInput.tsx      #   Phone entry with paste chip, validation, expandable message composer
-│   ├── CountrySelector.tsx #   Country trigger button + CountryPickerSheet animated bottom sheet
-│   ├── StartChatButton.tsx #   Call and WhatsApp dual-action button
-│   ├── RecentContactsList.tsx  # Paginated list with swipe actions and per-contact dropdown menu
-│   ├── FormatBar.tsx       #   Message formatting toolbar (bold, italic, lists, blockquote)
-│   ├── MessageEditor.tsx   #   Composable editor: FormatBar + text input + live preview
-│   ├── MessagePreview.tsx  #   Collapsible card rendering WhatsApp markdown as styled text
-│   ├── TemplateChips.tsx   #   Horizontal scroll of template pills with copy/delete
-│   └── ReminderSheet.tsx   #   Animated bottom sheet for scheduling follow-up notifications
+│   ├── _layout.tsx         # Root layout — theme, notification tap handler, toast viewport
+│   ├── index.tsx           # Home — phone card, quick actions, recent contacts
+│   ├── broadcast.tsx       # Broadcast list + creates a draft on “+”
+│   ├── broadcast/          # Broadcast detail route
+│   │   └── [id].tsx        #   Composer + recipient checklist
+│   ├── business-events/    # Lead groups with recurring reminders
+│   ├── reminders.tsx       # Follow-up reminders — list, filters, calendar
+│   ├── templates.tsx       # Quick response templates
+│   └── settings.tsx        # Preferences, data, backup, support
+├── ui/                     # @expo/ui design system
+│   ├── theme.ts            #   Palettes, typography, metrics, safe-area helpers
+│   ├── screen.tsx          #   Native host shell (header + content)
+│   ├── app-text.tsx        #   Typography wrapper over @expo/ui Text
+│   ├── app-text-input.tsx  #   String ↔ native ObservableState bridge
+│   ├── app-button.tsx      #   Button variants built from Row/Column
+│   ├── app-icon.*.tsx      #   SF Symbols / Material Symbols / web glyphs
+│   ├── confirm-sheet.tsx   #   Native bottom-sheet confirmation
+│   ├── action-sheet.tsx    #   Native action menu
+│   ├── toast.ts            #   In-app toast store
+│   ├── toast-viewport.tsx  #   Native toast overlay
+│   ├── message/            #   Composer, format bar, preview, template chips
+│   ├── country/            #   Country trigger + native picker sheet
+│   ├── contacts/           #   Contact rows + note sheet
+│   ├── reminders/          #   Rows, sheet, filters, calendar, tag picker
+│   ├── business-events/    #   Event rows + event form sheet
+│   ├── broadcasts/         #   Broadcast row
+│   └── ...
 ├── db/                     # SQLite database (expo-sqlite + Drizzle ORM)
-│   ├── schema.ts           #   5 tables: recent_contacts, broadcasts, broadcast_contacts, templates, reminders
-│   ├── client.ts           #   Database client with WAL mode, foreign keys, and migrations
-│   ├── index.ts            #   21 query functions — full CRUD for all tables
+│   ├── schema.ts           #   Tables — unchanged by the UI redesign
+│   ├── client.ts           #   Database client with WAL mode, foreign keys, migrations
+│   ├── index.ts            #   Query functions — full CRUD for all tables
 │   └── migrations/         #   Drizzle SQL migrations
-├── store/                  # Zustand state management
-│   └── useAppStore.ts      #   Single store — phone input, country detection, contacts, templates, actions
-├── hooks/                  # Custom React hooks
-│   └── useSmartClipboard.ts    # Monitors clipboard for phone numbers on app focus
-├── types/                  # TypeScript declarations (css.d.ts, uniwind-types.d.ts)
-└── global.css              # Tailwind/Uniwind entry point
+├── store/                  # Zustand state management (retained)
+├── hooks/                  # useIsDark, useSmartClipboard (retained)
+└── lib/                    # Haptics wrapper (retained)
 ```
+
+### UI architecture
+
+`@expo/ui` bridges to native SwiftUI on iOS and Jetpack Compose on Android, so it must be mounted inside a native `Host`. The app therefore keeps a thin React Native shell for routing and overlays, and every screen renders its header and content through `<Host>`:
+
+```tsx
+<View style={{ flex: 1 }}>
+  <Host colorScheme={scheme} matchContents={{ vertical: true }}>
+    <PageHeader title="Reminders" />
+  </Host>
+  <Host colorScheme={scheme} useViewportSizeMeasurement style={{ flex: 1 }}>
+    <ScrollView>…</ScrollView>
+  </Host>
+  <BottomSheet isPresented={…}>…</BottomSheet>
+</View>
+```
+
+- **No UI control or content primitive comes from React Native or a third-party UI kit.** Layout, text, buttons, inputs, switches, sheets, menus, list rows, calendar cells and the toast all use `@expo/ui` primitives.
+- **React Native is only the navigation/overlay shell.** Transparent `View`s position native hosts and floating footers; `expo-router` owns navigation.
+- **Native sheets instead of custom modals.** Confirmations, contact menus, reminder actions, tag picker, note editor, reminder/event forms and the country picker all use `@expo/ui`'s `BottomSheet` (SwiftUI sheet on iOS, Material modal sheet on Android).
+- **Native text fields.** `AppTextInput` bridges the string state used by Zustand into the native `ObservableState` required by `@expo/ui`'s `TextInput`.
+- **Platform-native icons.** `AppIcon.ios.tsx` uses SF Symbols; `AppIcon.android.tsx` uses Material Symbols XML drawables; `AppIcon.tsx` provides a web glyph fallback.
 
 ---
 
 ## 🔧 Key Design Details
 
-- **Country auto-detection**: `setPhoneNumber` strips non-digits, searches a preloaded cache of all countries sorted by calling-code length (longest-match-first). Detects the country from the prefix and splits it from the local number in a single pass.
+- **Country auto-detection**: `setPhoneNumber` strips non-digits, searches a preloaded cache of all countries sorted by calling-code length (longest-match-first). Detects the country from the prefix and splits it from the local number in a single pass. Unchanged.
 - **Notification deep link**: Tapping a reminder notification opens WhatsApp directly to the contact with the message pre-filled, via `Linking.openURL` in the `_layout.tsx` notification response listener.
-- **Broadcast auto-refresh**: The broadcast detail screen listens to `AppState` changes. When the user returns from WhatsApp after sending, it reloads the contact checklist to mark the latest recipient as sent.
-- **Format-aware message preview**: `MessagePreview` parses WhatsApp markdown into styled `<Text>` segments — handles inline formatting (`*bold*`, `_italic_`, `~strike~`, `` `mono` ``) and line prefixes (`*` bullets, `1.` numbered, `>` blockquotes with a vertical bar).
-- **Swipe actions on contacts**: Swipe left (red) deletes the contact from history. Swipe right (green) opens an SMS to that number.
-- **Gradle workaround**: The project uses Gradle 8.13 instead of 9.x due to a Gradle internal bug where `JvmVendorSpec.IBM_SEMERU` was removed but the Foojay toolchain resolver still references it. AGP 8.12.0 is fully compatible with Gradle 8.13.
+- **Broadcast progress**: `sendToContact` marks the recipient as sent and reloads the checklist synchronously, so the progress UI updates immediately without an `AppState` listener.
+- **Format-aware message preview**: `message-markup.ts` retains the WhatsApp markdown parser. `message-preview.ios.tsx` renders nested SwiftUI `Text` spans; `message-preview.android.tsx` renders nested Compose `Text` spans.
+- **Contact actions**: Swipe gestures were replaced by the same native action sheet used elsewhere. It exposes Call, WhatsApp, SMS, Save contact, Notes & tags, Set reminder and Delete.
+- **Theme**: The persisted `theme` setting now calls React Native's `Appearance.setColorScheme` and is passed to every native `Host` as `colorScheme`, so native controls and custom palettes stay in sync.
 
 ---
 

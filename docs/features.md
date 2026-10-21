@@ -19,7 +19,7 @@ The core of the app. You type a number, the app figures out which country it bel
 - The number is formatted in readable groups as you type. A raw version is kept behind the scenes for programmatic use.
 - Validation kicks in at 9+ digits — buttons light up when the number is usable.
 
-**Key components:** `PhoneInput`, `StartChatButton`
+**Key components:** `PhoneCard` (built from `@expo/ui` TextInput, Row, Column and buttons)
 **Store:** `useAppStore` (phone state, country selection)
 
 ### 2. Country picker
@@ -30,7 +30,7 @@ A searchable bottom sheet with every country. Opens when you tap the country tri
 - Selecting a country updates the phone input context and closes the sheet.
 - The country list is sorted so longer calling codes match first (important for countries that share prefixes).
 
-**Key components:** `CountryTrigger`, `CountryPickerSheet`
+**Key components:** `CountryTrigger`, `CountryPickerSheet` (both `@expo/ui`)
 
 ### 3. Recent contacts
 
@@ -39,10 +39,10 @@ Every number you message or call is automatically saved here. Think of it as a l
 - Shows when you last contacted each number ("2 hours ago").
 - If you grant contacts permission, it resolves numbers to names from your address book.
 - Each contact has a context menu with: Call, WhatsApp, Save to device contacts, Add note, Set reminder.
-- Swipe right on a contact → SMS. Swipe left → delete.
+- Open the native action sheet from the row menu: Call, WhatsApp, SMS, Save contact, Notes & tags, Set reminder, Delete.
 - Notes and tags appear as colored badges on the contact row.
 
-**Key components:** `RecentContactsList`, `ContactItem`, `ContactMenu`, `SwipeDeleteAction`, `SwipeSmsAction`
+**Key components:** `ContactRow`, `ActionSheet`, `NoteSheet`
 
 ### 4. Contact notes & tags
 
@@ -65,7 +65,7 @@ A rich text composer that appears when you want to pre-fill a WhatsApp message.
 - Live preview renders the formatting visually so you can check it before sending.
 - Template chips sit above the editor — horizontal scroll of saved snippets. Tap one to insert it.
 
-**Key components:** `MessageEditor`, `FormatBar`, `MessagePreview`, `TemplateChips`
+**Key components:** `MessageEditor`, `FormatBar`, `MessagePreview` (SwiftUI/Compose text spans), `TemplateChips`
 
 ### 6. Message templates (Quick Responses)
 
@@ -90,7 +90,7 @@ Schedule a follow-up WhatsApp message for a specific date and time. The app send
 - **High Priority:** Starred reminders get an amber badge and their own filter.
 
 **Screen:** Reminders
-**Components:** `ReminderSheet`, `ReminderItem`, `ReminderMenu`, `FilterBar`, `CalendarView`, `TagPickerModal`
+**Components:** `ReminderSheet`, `ReminderRow`, `ActionSheet`, `FilterBar`, `CalendarView`, `TagPickerSheet`
 **Stores:** `useReminderStore` (form state), `useRemindersPageStore` (list/filter/calendar state)
 
 ### 8. Broadcasts
@@ -130,15 +130,15 @@ The app uses local notifications for reminders. No push notifications, no server
 
 A straightforward settings screen accessible from the home header.
 
-|Section|What's there|
-|-|-|
-|Preferences|Default country (placeholder), clipboard detection toggle|
-|Notifications|Reminder sound toggle|
-|Appearance|Current theme (follows system), haptic feedback status|
-|Data|Clear buttons for contacts, templates, reminders, broadcasts — each with confirmation|
-|Privacy|Statement that all data is local|
-|Support|Rate app, share, send feedback via WhatsApp|
-|About|App version|
+| Section       | What's there                                                                          |
+| ------------- | ------------------------------------------------------------------------------------- |
+| Preferences   | Default country (placeholder), clipboard detection toggle                             |
+| Notifications | Reminder sound toggle                                                                 |
+| Appearance    | Current theme (follows system), haptic feedback status                                |
+| Data          | Clear buttons for contacts, templates, reminders, broadcasts — each with confirmation |
+| Privacy       | Statement that all data is local                                                      |
+| Support       | Rate app, share, send feedback via WhatsApp                                           |
+| About         | App version                                                                           |
 
 **Screen:** Settings
 
