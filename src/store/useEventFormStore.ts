@@ -122,13 +122,23 @@ export const useEventFormStore = create<EventFormStore>((set, get) => ({
 
   init: (event, customTags) => {
     const contactTags = (() => {
-      try { return db.getAllContactTags(); } catch { return []; }
+      try {
+        return db.getAllContactTags();
+      } catch {
+        return [];
+      }
     })();
     const reminderTags = (() => {
-      try { return db.getAllTags(); } catch { return []; }
+      try {
+        return db.getAllTags();
+      } catch {
+        return [];
+      }
     })();
     const eventTags = parseTags(event.tags);
-    const merged = [...new Set([...customTags, ...reminderTags, ...contactTags, ...eventTags])].sort();
+    const merged = [
+      ...new Set([...customTags, ...reminderTags, ...contactTags, ...eventTags]),
+    ].sort();
     const time = parseTime(event.reminderTime ?? "09:00");
 
     set({
@@ -150,10 +160,18 @@ export const useEventFormStore = create<EventFormStore>((set, get) => ({
 
   reset: (customTags) => {
     const contactTags = (() => {
-      try { return db.getAllContactTags(); } catch { return []; }
+      try {
+        return db.getAllContactTags();
+      } catch {
+        return [];
+      }
     })();
     const reminderTags = (() => {
-      try { return db.getAllTags(); } catch { return []; }
+      try {
+        return db.getAllTags();
+      } catch {
+        return [];
+      }
     })();
     const merged = [...new Set([...customTags, ...reminderTags, ...contactTags])].sort();
 
@@ -187,3 +205,13 @@ export const useEventFormStore = create<EventFormStore>((set, get) => ({
     };
   },
 }));
+
+/**
+ * Seed the event form when the user opens the sheet. Keeping this in the click
+ * handler avoids re-running form resets from an effect.
+ */
+export function prepareEventForm(editEvent: BusinessEventData | null, customTags: string[]) {
+  const form = useEventFormStore.getState();
+  if (editEvent) form.init(editEvent, customTags);
+  else form.reset(customTags);
+}

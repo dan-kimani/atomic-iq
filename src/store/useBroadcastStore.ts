@@ -2,11 +2,11 @@ import * as Linking from "expo-linking";
 import { create } from "zustand";
 
 import * as db from "../db";
-import { haptics, ImpactFeedbackStyle, NotificationFeedbackType } from "../lib/haptics";
+import { haptics, NotificationFeedbackType } from "../lib/haptics";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
-export interface BroadcastDraft {
+interface BroadcastDraft {
   id: number;
   message: string;
   createdAt: number;
@@ -14,7 +14,7 @@ export interface BroadcastDraft {
   sent: number;
 }
 
-export interface BroadcastContact {
+interface BroadcastContact {
   id: number;
   broadcastId: number;
   phoneNumber: string;

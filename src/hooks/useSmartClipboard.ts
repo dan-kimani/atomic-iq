@@ -1,59 +1,93 @@
 import * as Clipboard from "expo-clipboard";
-import { useEffect, useRef, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { AppState } from "react-native";
 
 import { useAppStore } from "../store/useAppStore";
 
-export function useSmartClipboard(currentRawValue: string) {
-  const [clipboardContent, setClipboardContent] = useState<string | null>(null);
-  const clipboardDetection = useAppStore((s) => s.clipboardDetection);
-  const rawValueRef = useRef(currentRawValue);
-  rawValueRef.current = currentRawValue;
+let clipboardSnapshot: string | null = null;
+const listeners = new Set<() => void>();
 
-  useEffect(() => {
-    const checkClipboard = async () => {
-      // Immediately clear if detection is disabled
-      if (!clipboardDetection) {
-        setClipboardContent(null);
-        return;
-      }
+let appStateSubscription: { remove: () => void } | null = null;
+let storeSubscription: (() => void) | null = null;
+let requestGeneration = 0;
 
-      const hasString = await Clipboard.hasStringAsync();
-      if (!hasString) {
-        setClipboardContent(null);
-        return;
-      }
+function emit() {
+  for (const listener of listeners) listener();
+}
 
-      const content = await Clipboard.getStringAsync();
+function setSnapshot(value: string | null) {
+  if (value === clipboardSnapshot) return;
+  clipboardSnapshot = value;
+  emit();
+}
 
-      // Simple validation: Allow +, spaces, dashes, parentheses
-      // Must contain at least 6 digits to be worth pasting
-      const digitCount = (content.match(/\d/g) || []).length;
-      const validChars = /^[+\d\s\-().]*$/;
+async function refreshClipboard() {
+  const request = ++requestGeneration;
 
-      // Check against current value to avoid showing what user already typed
-      const isDifferent = content.replace(/\D/g, "") !== rawValueRef.current;
+  if (!useAppStore.getState().clipboardDetection) {
+    setSnapshot(null);
+    return;
+  }
 
-      if (digitCount >= 6 && digitCount <= 15 && validChars.test(content) && isDifferent) {
-        setClipboardContent(content.trim());
-      } else {
-        setClipboardContent(null);
-      }
-    };
+  try {
+    const hasString = await Clipboard.hasStringAsync();
+    if (request !== requestGeneration) return;
+    if (!hasString) {
+      setSnapshot(null);
+      return;
+    }
 
-    // Check immediately when detection is toggled on or app starts
-    checkClipboard();
+    const content = await Clipboard.getStringAsync();
+    if (request !== requestGeneration) return;
 
-    const subscription = AppState.addEventListener("change", (nextAppState) => {
-      if (nextAppState === "active") {
-        checkClipboard();
-      }
+    const digitCount = (content.match(/\d/g) || []).length;
+    const validChars = /^[+\d\s\-().]*$/;
+    if (digitCount >= 6 && digitCount <= 15 && validChars.test(content)) {
+      setSnapshot(content.trim());
+    } else {
+      setSnapshot(null);
+    }
+  } catch {
+    if (request === requestGeneration) setSnapshot(null);
+  }
+}
+
+/**
+ * `useSyncExternalStore` owns the AppState/store subscriptions for this
+ * external resource, so the consuming hook does not need an effect.
+ */
+function subscribe(onChange: () => void) {
+  listeners.add(onChange);
+
+  if (listeners.size === 1) {
+    appStateSubscription = AppState.addEventListener("change", (next) => {
+      if (next === "active") refreshClipboard();
     });
+    storeSubscription = useAppStore.subscribe((state, previous) => {
+      if (state.clipboardDetection !== previous.clipboardDetection) refreshClipboard();
+    });
+    refreshClipboard();
+  }
 
-    return () => {
-      subscription.remove();
-    };
-  }, [clipboardDetection]);
+  return () => {
+    listeners.delete(onChange);
+    if (listeners.size > 0) return;
+    requestGeneration++;
+    appStateSubscription?.remove();
+    appStateSubscription = null;
+    storeSubscription?.();
+    storeSubscription = null;
+  };
+}
 
-  return clipboardContent;
+function getSnapshot() {
+  return clipboardSnapshot;
+}
+
+export function useSmartClipboard(currentRawValue: string) {
+  const clipboardDetection = useAppStore((state) => state.clipboardDetection);
+  const content = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+
+  if (!clipboardDetection || !content) return null;
+  return content.replace(/\D/g, "") !== currentRawValue ? content : null;
 }

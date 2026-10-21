@@ -1,31 +1,71 @@
 import * as Contacts from "expo-contacts/legacy";
 import * as IntentLauncher from "expo-intent-launcher";
 import * as Linking from "expo-linking";
-import { Platform } from "react-native";
-import { Uniwind } from "uniwind";
-import { FlagType, getAllCountries } from "react-native-country-picker-modal";
-import type { Country as PickerCountry } from "react-native-country-picker-modal";
+import { Appearance, Platform } from "react-native";
+import {
+  FlagType,
+  getAllCountries,
+  type Country as PickerCountry,
+} from "react-native-country-picker-modal";
 import { create } from "zustand";
 
 import * as db from "../db";
+import { dbReady } from "../db/client";
+import { countryFlagEmoji } from "../lib/country-flag";
 import { haptics, ImpactFeedbackStyle, NotificationFeedbackType } from "../lib/haptics";
 
 // Cache for countries data — preloaded on import, sorted once by calling code length
 let countriesCache: PickerCountry[] | null = null;
+let countriesPromise: Promise<PickerCountry[]> | null = null;
+let countriesSnapshot: PickerCountry[] = [];
+const countryListeners = new Set<() => void>();
 
-export const loadCountries = async (): Promise<PickerCountry[]> => {
+function publishCountries(countries: PickerCountry[]) {
+  countriesSnapshot = countries;
+  for (const listener of countryListeners) listener();
+}
+
+/** External-store adapter so UI can read the preloaded country list without an effect. */
+export function subscribeCountries(listener: () => void) {
+  countryListeners.add(listener);
+  return () => {
+    countryListeners.delete(listener);
+  };
+}
+
+export function getCountriesSnapshot(): PickerCountry[] {
+  return countriesSnapshot;
+}
+
+const loadCountries = async (): Promise<PickerCountry[]> => {
   if (countriesCache) return countriesCache;
-  const raw = await getAllCountries(FlagType.EMOJI);
-  countriesCache = [...raw].sort((a, b) => {
-    const aCode = a.callingCode?.[0] || "";
-    const bCode = b.callingCode?.[0] || "";
-    return bCode.length - aCode.length;
-  });
-  return countriesCache;
+  if (countriesPromise) return countriesPromise;
+
+  countriesPromise = getAllCountries(FlagType.EMOJI)
+    .then((raw) => {
+      const countries = raw.map((country) => ({
+        ...country,
+        flag: countryFlagEmoji(country.cca2, country.flag),
+      }));
+      const sorted = [...countries].sort((a, b) => {
+        const aCode = a.callingCode?.[0] || "";
+        const bCode = b.callingCode?.[0] || "";
+        return bCode.length - aCode.length;
+      });
+      countriesCache = sorted;
+      publishCountries(sorted);
+      return sorted;
+    })
+    .catch((error: unknown) => {
+      countriesPromise = null;
+      throw error;
+    });
+
+  return countriesPromise;
 };
 
 // Warm the cache early so country detection in setPhoneNumber is synchronous
-loadCountries();
+loadCountries().catch(() => {});
 
 function detectCountry(cleaned: string): PickerCountry | null {
   if (!countriesCache) return null;
@@ -88,6 +128,175 @@ export const formatPhoneNumber = (value: string): string => {
   return parts.join(" ");
 };
 
+const DEFAULT_SELECTED_COUNTRY: Country = { code: "+254", country: "KE", flag: "🇰🇪" };
+const CONTACT_NAMES_CACHE_KEY = "contactNamesCache";
+
+type RecentContactRow = ReturnType<typeof db.getRecentContacts>[number];
+
+function mapRecentContact(contact: RecentContactRow): RecentContactData {
+  let country = contact.country;
+  let flag = contact.flag;
+  if (!country || !flag) {
+    const found = findCountryByCallingCode(contact.countryCode);
+    if (found) {
+      country = country || found.cca2;
+      flag = flag || found.flag || "";
+    }
+  }
+  return {
+    phoneNumber: contact.phoneNumber,
+    countryCode: contact.countryCode,
+    country,
+    flag,
+    usedAt: new Date(contact.usedAt),
+    notes: contact.notes,
+    tags: contact.tags,
+  };
+}
+
+function readBooleanSetting(key: string, fallback: boolean): boolean {
+  try {
+    const raw = db.getSetting(key);
+    if (raw !== undefined) return raw === "1";
+  } catch {
+    /* The database may not be ready yet. */
+  }
+  return fallback;
+}
+
+function readEnumSetting<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
+  try {
+    const raw = db.getSetting(key);
+    if (raw !== undefined && (allowed as readonly string[]).includes(raw)) return raw as T;
+  } catch {
+    /* The database may not be ready yet. */
+  }
+  return fallback;
+}
+
+function readPersistedSettings() {
+  let selectedCountry = DEFAULT_SELECTED_COUNTRY;
+  try {
+    const raw = db.getSetting("selectedCountry");
+    if (raw) {
+      const stored = JSON.parse(raw) as Partial<Country>;
+      if (typeof stored.code === "string" && typeof stored.country === "string") {
+        selectedCountry = {
+          code: stored.code,
+          country: stored.country,
+          flag: countryFlagEmoji(stored.country, stored.flag ?? ""),
+        };
+      }
+    }
+  } catch {
+    /* The database may not be ready yet. */
+  }
+
+  return {
+    selectedCountry,
+    selectedCountryCode: selectedCountry.code,
+    theme: readEnumSetting("theme", ["light", "dark", "system"] as const, "system"),
+    clipboardDetection: readBooleanSetting("clipboardDetection", true),
+    notificationSound: readBooleanSetting("notificationSound", true),
+    hapticFeedback: readBooleanSetting("hapticFeedback", true),
+    backupFrequency: readEnumSetting(
+      "backupFrequency",
+      ["hourly", "daily", "weekly"] as const,
+      "daily",
+    ),
+  };
+}
+
+function readRecentContacts(limit = 20, offset = 0): RecentContactData[] {
+  try {
+    return db.getRecentContacts(limit, offset).map(mapRecentContact);
+  } catch {
+    return [];
+  }
+}
+
+function readContactNamesCache(): Record<string, string> | null {
+  try {
+    const raw = db.getSetting(CONTACT_NAMES_CACHE_KEY);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const names: Record<string, string> = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      if (typeof value === "string") names[key] = value;
+    }
+    return names;
+  } catch {
+    return null;
+  }
+}
+
+function writeContactNamesCache(
+  names: Record<string, string>,
+  contacts: RecentContactData[],
+): void {
+  const relevant: Record<string, string> = {};
+  for (const contact of contacts) {
+    const fullNumber = `${contact.countryCode}${contact.phoneNumber}`.replace(/\D/g, "");
+    const localNumber = contact.phoneNumber.replace(/\D/g, "");
+    if (names[fullNumber]) relevant[fullNumber] = names[fullNumber];
+    if (localNumber !== fullNumber && names[localNumber]) {
+      relevant[localNumber] = names[localNumber];
+    }
+  }
+  try {
+    db.setSetting(CONTACT_NAMES_CACHE_KEY, JSON.stringify(relevant));
+  } catch {
+    /* Best effort — names are an enhancement, not startup data. */
+  }
+}
+
+function areNameMapsEqual(a: Record<string, string>, b: Record<string, string>): boolean {
+  const aKeys = Object.keys(a);
+  if (aKeys.length !== Object.keys(b).length) return false;
+  for (const key of aKeys) {
+    if (a[key] !== b[key]) return false;
+  }
+  return true;
+}
+
+async function ensureContactsPermission(): Promise<boolean> {
+  try {
+    const current = await Contacts.getPermissionsAsync();
+    if (current.status === "granted") return true;
+    if (!current.canAskAgain) return false;
+    const next = await Contacts.requestPermissionsAsync();
+    return next.status === "granted";
+  } catch {
+    return false;
+  }
+}
+
+async function fetchDeviceContactNames(): Promise<Record<string, string> | null> {
+  try {
+    const permission = await Contacts.getPermissionsAsync();
+    if (permission.status !== "granted") return null;
+
+    const { data } = await Contacts.getContactsAsync({
+      fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers],
+    });
+    const names: Record<string, string> = {};
+    for (const contact of data) {
+      const name = contact.name;
+      if (!name || !contact.phoneNumbers) continue;
+      for (const phoneNumber of contact.phoneNumbers) {
+        if (!phoneNumber.number) continue;
+        const digits = phoneNumber.number.replace(/\D/g, "");
+        if (digits.length >= 7) names[digits] = name;
+      }
+    }
+    return names;
+  } catch (error) {
+    console.error("Failed to load contacts from device:", error);
+    return null;
+  }
+}
+
 interface AppStore {
   phoneNumber: string;
   rawPhoneNumber: string;
@@ -98,6 +307,7 @@ interface AppStore {
   messageText: string;
   contactNames: Record<string, string>;
   templates: { id: number; text: string }[];
+  hydrated: boolean;
   setPhoneNumber: (phone: string) => void;
   setSelectedCountry: (country: Country) => void;
   setCountryPickerOpen: (open: boolean) => void;
@@ -112,7 +322,7 @@ interface AppStore {
   openDialer: (countryCode: string, phoneNumber: string) => void;
   saveContact: (countryCode: string, phoneNumber: string) => Promise<void>;
   loadRecentContacts: () => Promise<void>;
-  requestContactsPermission: () => Promise<void>;
+  refreshContactNames: () => Promise<void>;
   selectRecentContact: (contact: RecentContactData) => void;
   deleteRecentContact: (phoneNumber: string) => Promise<void>;
   clearAllRecentContacts: () => Promise<void>;
@@ -135,34 +345,16 @@ interface AppStore {
 export const useAppStore = create<AppStore>((set, get) => ({
   phoneNumber: "",
   rawPhoneNumber: "",
-  selectedCountry: (() => {
-    try {
-      const raw = db.getSetting("selectedCountry");
-      if (raw) return JSON.parse(raw) as Country;
-    } catch { /* fall through */ }
-    return { code: "+254", country: "KE", flag: "🇰🇪" };
-  })(),
-  selectedCountryCode: (() => {
-    try {
-      const raw = db.getSetting("selectedCountry");
-      if (raw) return (JSON.parse(raw) as Country).code;
-    } catch { /* fall through */ }
-    return "+254";
-  })(),
+  selectedCountry: { ...DEFAULT_SELECTED_COUNTRY },
+  selectedCountryCode: DEFAULT_SELECTED_COUNTRY.code,
   isCountryPickerOpen: false,
   messageText: "",
   contactNames: {},
   templates: [],
   recentContacts: [],
+  hydrated: false,
 
-  // Lazy-loaded from DB on first access (migration may not have run at import time)
-  customTags: (() => {
-    try {
-      return db.getCustomTags();
-    } catch {
-      return [];
-    }
-  })(),
+  customTags: [],
   addCustomTag: (tag) => {
     const trimmed = tag.trim();
     if (!trimmed) return;
@@ -177,13 +369,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     set((s) => ({ customTags: s.customTags.filter((t) => t !== tag) }));
   },
 
-  clipboardDetection: (() => {
-    try {
-      const raw = db.getSetting("clipboardDetection");
-      if (raw !== undefined) return raw === "1";
-    } catch { /* fall through */ }
-    return true;
-  })(),
+  clipboardDetection: true,
   toggleClipboardDetection: () =>
     set((s) => {
       const next = !s.clipboardDetection;
@@ -191,13 +377,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       return { clipboardDetection: next };
     }),
 
-  notificationSound: (() => {
-    try {
-      const raw = db.getSetting("notificationSound");
-      if (raw !== undefined) return raw === "1";
-    } catch { /* fall through */ }
-    return true;
-  })(),
+  notificationSound: true,
   toggleNotificationSound: () =>
     set((s) => {
       const next = !s.notificationSound;
@@ -205,38 +385,22 @@ export const useAppStore = create<AppStore>((set, get) => ({
       return { notificationSound: next };
     }),
 
-  theme: (() => {
-    try {
-      const raw = db.getSetting("theme");
-      if (raw === "light" || raw === "dark") return raw;
-    } catch { /* fall through */ }
-    return "system";
-  })(),
+  // The theme colours the pre-hydration frame, so read it eagerly when the
+  // settings table already exists. Hydration re-reads it after migrations.
+  theme: readEnumSetting("theme", ["light", "dark", "system"] as const, "system"),
   setTheme: (theme) => {
     set({ theme });
-    Uniwind.setTheme(theme);
+    Appearance.setColorScheme(theme === "system" ? "unspecified" : theme);
     db.setSetting("theme", theme);
   },
 
-  backupFrequency: (() => {
-    try {
-      const raw = db.getSetting("backupFrequency");
-      if (raw === "hourly" || raw === "daily" || raw === "weekly") return raw;
-    } catch { /* fall through */ }
-    return "daily";
-  })(),
+  backupFrequency: "daily",
   setBackupFrequency: (freq) => {
     db.setSetting("backupFrequency", freq);
     set({ backupFrequency: freq });
   },
 
-  hapticFeedback: (() => {
-    try {
-      const raw = db.getSetting("hapticFeedback");
-      if (raw !== undefined) return raw === "1";
-    } catch { /* fall through */ }
-    return true;
-  })(),
+  hapticFeedback: true,
   toggleHapticFeedback: () =>
     set((s) => {
       const next = !s.hapticFeedback;
@@ -269,22 +433,24 @@ export const useAppStore = create<AppStore>((set, get) => ({
       const formatted = formatPhoneNumber(cleaned);
       set({ phoneNumber: formatted, rawPhoneNumber: cleaned });
 
-      loadCountries().then(() => {
-        const currentRaw = get().rawPhoneNumber;
-        if (currentRaw !== cleaned) return;
-        const retry = detectCountry(cleaned);
-        if (retry) {
-          const code = retry.callingCode?.[0] ?? "";
-          const phoneWithoutCode = cleaned.substring(code.length);
-          haptics.impactAsync(ImpactFeedbackStyle.Light);
-          set({
-            selectedCountry: { code: `+${code}`, country: retry.cca2, flag: retry.flag || "" },
-            selectedCountryCode: `+${code}`,
-            phoneNumber: formatPhoneNumber(phoneWithoutCode),
-            rawPhoneNumber: phoneWithoutCode,
-          });
-        }
-      });
+      loadCountries()
+        .then(() => {
+          const currentRaw = get().rawPhoneNumber;
+          if (currentRaw !== cleaned) return;
+          const retry = detectCountry(cleaned);
+          if (retry) {
+            const code = retry.callingCode?.[0] ?? "";
+            const phoneWithoutCode = cleaned.substring(code.length);
+            haptics.impactAsync(ImpactFeedbackStyle.Light);
+            set({
+              selectedCountry: { code: `+${code}`, country: retry.cca2, flag: retry.flag || "" },
+              selectedCountryCode: `+${code}`,
+              phoneNumber: formatPhoneNumber(phoneWithoutCode),
+              rawPhoneNumber: phoneWithoutCode,
+            });
+          }
+        })
+        .catch(() => {});
       return;
     }
 
@@ -311,9 +477,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   setSelectedCountry: (country) => {
+    const next = { ...country, flag: countryFlagEmoji(country.country, country.flag) };
     haptics.impactAsync(ImpactFeedbackStyle.Light);
-    db.setSetting("selectedCountry", JSON.stringify(country));
-    set({ selectedCountry: country, selectedCountryCode: country.code });
+    db.setSetting("selectedCountry", JSON.stringify(next));
+    set({ selectedCountry: next, selectedCountryCode: next.code });
   },
 
   isValidNumber: () => get().rawPhoneNumber.trim().length >= 9,
@@ -420,86 +587,38 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   loadRecentContacts: async () => {
     try {
-      const contacts = db.getRecentContacts(20, 0);
+      await dbReady;
+    } catch {
+      /* Hydration already reported the migration failure. */
+    }
 
-      const recentContactsData: RecentContactData[] = contacts.map((contact) => {
-        let country = contact.country;
-        let flag = contact.flag;
-        if (!country || !flag) {
-          const found = findCountryByCallingCode(contact.countryCode);
-          if (found) {
-            country = country || found.cca2;
-            flag = flag || found.flag || "";
-          }
-        }
-        return {
-          phoneNumber: contact.phoneNumber,
-          countryCode: contact.countryCode,
-          country,
-          flag,
-          usedAt: new Date(contact.usedAt),
-          notes: contact.notes,
-          tags: contact.tags,
-        };
-      });
-
-      // Resolve device contact names (uses whatever permission state exists)
-      let contactNames: Record<string, string> = {};
-      try {
-        const perm = await Contacts.getPermissionsAsync();
-        if (perm.status === "granted") {
-          const { data } = await Contacts.getContactsAsync({
-            fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers],
-          });
-          for (const c of data) {
-            const name = c.name;
-            if (!name || !c.phoneNumbers) continue;
-            for (const pn of c.phoneNumbers) {
-              if (pn.number) {
-                const digits = pn.number.replace(/\D/g, "");
-                if (digits.length >= 7) contactNames[digits] = name;
-              }
-            }
-          }
-        }
-      } catch (err) {
-        console.error("Failed to load contacts from device:", err);
-      }
-
-      set({ recentContacts: recentContactsData, contactNames });
+    try {
+      set({ recentContacts: readRecentContacts(20, 0) });
+      // Names come from the device and can take a while; render the rows first
+      // and fill in names when the query resolves.
+      void get().refreshContactNames();
     } catch (error) {
       console.error("Failed to load recent contacts:", error);
-      set({ recentContacts: [], contactNames: {} });
+      set({ recentContacts: [] });
     }
+  },
+
+  refreshContactNames: async () => {
+    const names = await fetchDeviceContactNames();
+    if (!names) return;
+    if (!areNameMapsEqual(get().contactNames, names)) {
+      set({ contactNames: names });
+    }
+    writeContactNamesCache(names, get().recentContacts);
   },
 
   loadMoreRecentContacts: () => {
     const current = get().recentContacts;
-    const contacts = db.getRecentContacts(20, current.length);
-    if (contacts.length === 0) return;
-
-    const newContacts: RecentContactData[] = contacts.map((contact) => {
-      let country = contact.country;
-      let flag = contact.flag;
-      if (!country || !flag) {
-        const found = findCountryByCallingCode(contact.countryCode);
-        if (found) {
-          country = country || found.cca2;
-          flag = flag || found.flag || "";
-        }
-      }
-      return {
-        phoneNumber: contact.phoneNumber,
-        countryCode: contact.countryCode,
-        country,
-        flag,
-        usedAt: new Date(contact.usedAt),
-        notes: contact.notes,
-        tags: contact.tags,
-      };
-    });
+    const newContacts = readRecentContacts(20, current.length);
+    if (newContacts.length === 0) return;
 
     set({ recentContacts: [...current, ...newContacts] });
+    writeContactNamesCache(get().contactNames, get().recentContacts);
   },
 
   selectRecentContact: (contact) => {
@@ -527,18 +646,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
   },
 
-  requestContactsPermission: async () => {
-    try {
-      await Contacts.requestPermissionsAsync();
-    } catch {
-      // Ignore — loadRecentContacts will work with whatever state exists
-    }
-  },
-
   clearAllRecentContacts: async () => {
     try {
       db.clearAllRecent();
       set({ recentContacts: [] });
+      writeContactNamesCache(get().contactNames, []);
       haptics.notificationAsync(NotificationFeedbackType.Success);
     } catch (error) {
       console.error("Failed to clear recent contacts:", error);
@@ -546,7 +658,87 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 }));
 
-// Restore persisted theme immediately on app startup (before first render)
-Uniwind.setTheme(useAppStore.getState().theme);
+let hydrationPromise: Promise<void> | null = null;
+
+/**
+ * Loads everything the first frame needs before the navigator mounts. The
+ * migration promise is async, so querying the database eagerly either ran
+ * before the tables existed or left screens to render empty and then
+ * repopulate. Both looked like a flicker at launch.
+ */
+export function hydrateAppStore(): Promise<void> {
+  if (hydrationPromise) return hydrationPromise;
+
+  hydrationPromise = (async () => {
+    try {
+      await dbReady;
+    } catch (error) {
+      console.error("[startup] database is not ready", error);
+    }
+
+    try {
+      await loadCountries();
+    } catch (error) {
+      console.error("[startup] failed to load countries", error);
+    }
+
+    const persisted = readPersistedSettings();
+    const recentContacts = readRecentContacts(20, 0);
+    const cachedNames = readContactNamesCache();
+
+    let templates: { id: number; text: string }[] = [];
+    try {
+      templates = db.getTemplates();
+    } catch {
+      /* Migration failed — keep the empty default. */
+    }
+
+    let customTags: string[] = [];
+    try {
+      customTags = db.getCustomTags();
+    } catch {
+      /* Migration failed — keep the empty default. */
+    }
+
+    const needsNamesBeforeRender = cachedNames === null && recentContacts.length > 0;
+
+    useAppStore.setState({
+      ...persisted,
+      recentContacts,
+      contactNames: cachedNames ?? {},
+      templates,
+      customTags,
+      hydrated: !needsNamesBeforeRender,
+    });
+
+    // On a cold first launch there is no name cache yet. Resolve the permission
+    // and names before the first frame so rows do not switch from a number to a
+    // name a moment after the screen appears.
+    if (needsNamesBeforeRender) {
+      const granted = await ensureContactsPermission();
+      const names = granted ? await fetchDeviceContactNames() : null;
+      if (names) {
+        writeContactNamesCache(names, recentContacts);
+        useAppStore.setState({ contactNames: names, hydrated: true });
+      } else {
+        useAppStore.setState({ hydrated: true });
+      }
+      return;
+    }
+
+    // Refresh names (and ask for the permission on the first run) after the
+    // first frame: a large contact list must not delay or reflow startup.
+    void (async () => {
+      const granted = await ensureContactsPermission();
+      if (!granted) return;
+      await useAppStore.getState().refreshContactNames();
+    })();
+  })().catch((error: unknown) => {
+    console.error("[startup] hydration failed", error);
+    useAppStore.setState({ hydrated: true });
+  });
+
+  return hydrationPromise;
+}
 
 export type { Country };

@@ -1,15 +1,16 @@
 import { create } from "zustand";
 
 import * as db from "../db";
-import {
-  type BusinessEventData,
-} from "./useBusinessEventStore";
+import { type BusinessEventData } from "./useBusinessEventStore";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 function parseTags(tags: string | null): string[] {
   if (!tags) return [];
-  return tags.split(",").map((t) => t.trim()).filter(Boolean);
+  return tags
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
 }
 
 interface ContactEntry {
@@ -42,12 +43,7 @@ type DetailStore = {
 
   loadDetail: (eventId: number) => boolean;
   setMessage: (text: string) => void;
-  addContact: (
-    phoneNumber: string,
-    countryCode: string,
-    country: string,
-    flag: string,
-  ) => void;
+  addContact: (phoneNumber: string, countryCode: string, country: string, flag: string) => void;
   toggleEventStatus: (eventId: number) => void;
 };
 
@@ -87,11 +83,12 @@ export const useBusinessEventDetailStore = create<DetailStore>((set, get) => ({
 
     const eventTags = parseTags(event.tags);
     if (eventTags.length > 0) {
-      const existing = db
-        .getRecentContacts()
-        .find((c) => c.phoneNumber === phoneNumber);
+      const existing = db.getRecentContacts().find((c) => c.phoneNumber === phoneNumber);
       const existingTags = existing?.tags
-        ? existing.tags.split(",").map((t) => t.trim()).filter(Boolean)
+        ? existing.tags
+            .split(",")
+            .map((t) => t.trim())
+            .filter(Boolean)
         : [];
       const merged = [...new Set([...existingTags, ...eventTags])];
       db.updateContactTags(phoneNumber, merged.join(","));

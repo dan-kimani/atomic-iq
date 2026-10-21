@@ -6,7 +6,9 @@ function enabled() {
   try {
     const raw = db.getSetting("hapticFeedback");
     if (raw !== undefined) return raw === "1";
-  } catch { /* DB not ready yet */ }
+  } catch {
+    /* DB not ready yet */
+  }
   return true;
 }
 
@@ -15,7 +17,9 @@ export const haptics = {
     if (!enabled()) return;
     return Haptics.impactAsync(style);
   },
-  notificationAsync: (type: Haptics.NotificationFeedbackType = Haptics.NotificationFeedbackType.Success) => {
+  notificationAsync: (
+    type: Haptics.NotificationFeedbackType = Haptics.NotificationFeedbackType.Success,
+  ) => {
     if (!enabled()) return;
     return Haptics.notificationAsync(type);
   },

@@ -47,10 +47,6 @@ export function getRecentContacts(limit = 20, offset = 0) {
     .all();
 }
 
-export function getRecentContactsCount() {
-  return db.select({ c: count() }).from(recentContacts).get()?.c ?? 0;
-}
-
 export function updateContactNote(phoneNumber: string, note: string | null) {
   db.update(recentContacts)
     .set({ notes: note })
@@ -295,52 +291,25 @@ export function getSetting(key: string): string | undefined {
 }
 
 export function setSetting(key: string, value: string) {
-  db.insert(settings).values({ key, value }).onConflictDoUpdate({ target: settings.key, set: { value } }).run();
-}
-
-export function getPendingReminders() {
-  return db
-    .select({
-      id: reminders.id,
-      phoneNumber: reminders.phoneNumber,
-      countryCode: reminders.countryCode,
-      message: reminders.message,
-      scheduledAt: reminders.scheduledAt,
-    })
-    .from(reminders)
-    .where(and(eq(reminders.completed, 0), sql`${reminders.scheduledAt} <= ${Date.now()}`))
-    .orderBy(asc(reminders.scheduledAt))
-    .all();
+  db.insert(settings)
+    .values({ key, value })
+    .onConflictDoUpdate({ target: settings.key, set: { value } })
+    .run();
 }
 
 // -- Business Events --
 
-export function createBusinessEvent(
-  name: string,
-  tags: string | null,
-  period: string | null,
-) {
-  const r = db
-    .insert(businessEvents)
-    .values({ name, tags, period, createdAt: Date.now() })
-    .run();
+export function createBusinessEvent(name: string, tags: string | null, period: string | null) {
+  const r = db.insert(businessEvents).values({ name, tags, period, createdAt: Date.now() }).run();
   return r.lastInsertRowId;
 }
 
 export function getBusinessEvents() {
-  return db
-    .select()
-    .from(businessEvents)
-    .orderBy(desc(businessEvents.createdAt))
-    .all();
+  return db.select().from(businessEvents).orderBy(desc(businessEvents.createdAt)).all();
 }
 
 export function getBusinessEvent(id: number) {
-  return db
-    .select()
-    .from(businessEvents)
-    .where(eq(businessEvents.id, id))
-    .get();
+  return db.select().from(businessEvents).where(eq(businessEvents.id, id)).get();
 }
 
 export function updateBusinessEvent(
@@ -374,10 +343,7 @@ export function toggleBusinessEventStatus(id: number) {
     .get();
   if (!event) return;
   const next = event.status === "active" ? "done" : "active";
-  db.update(businessEvents)
-    .set({ status: next })
-    .where(eq(businessEvents.id, id))
-    .run();
+  db.update(businessEvents).set({ status: next }).where(eq(businessEvents.id, id)).run();
 }
 
 export function getContactsByTags(tags: string[]) {
@@ -385,12 +351,9 @@ export function getContactsByTags(tags: string[]) {
   if (active.length === 0) return [];
 
   // Build OR chain: tags LIKE '%tag1%' OR tags LIKE '%tag2%' ...
-  const conditions = active.map((tag) =>
-    sql`${recentContacts.tags} LIKE ${"%" + tag + "%"}`,
-  );
-  const combined = conditions.length === 1
-    ? conditions[0]
-    : conditions.reduce((acc, c) => sql`(${acc} OR ${c})`);
+  const conditions = active.map((tag) => sql`${recentContacts.tags} LIKE ${"%" + tag + "%"}`);
+  const combined =
+    conditions.length === 1 ? conditions[0] : conditions.reduce((acc, c) => sql`(${acc} OR ${c})`);
 
   return db
     .select({

@@ -1,9 +1,9 @@
 import * as Notifications from "expo-notifications";
-import Toast from "react-native-toast-message";
 import { create } from "zustand";
 
 import * as db from "../db";
 import { haptics, ImpactFeedbackStyle } from "../lib/haptics";
+import { showToast } from "../ui/toast";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -94,7 +94,9 @@ export function computeNextReminder(
         // If that date is already past, push to the month after
         if (d.getTime() <= from.getTime()) {
           d.setMonth(d.getMonth() + 1);
-          d.setDate(Math.min(reminderDay, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
+          d.setDate(
+            Math.min(reminderDay, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()),
+          );
         }
       } else {
         d.setMonth(d.getMonth() + 1);
@@ -266,7 +268,12 @@ export const useBusinessEventStore = create<BusinessEventStore>((set, get) => ({
       const timeStr = event.reminderTime ?? "09:00";
       const nextAt = computeNextReminder(interval, new Date(), timeStr, event.reminderDay);
 
-      const notifId = await scheduleEventReminder(event.id, event.name, contactCount, nextAt.getTime());
+      const notifId = await scheduleEventReminder(
+        event.id,
+        event.name,
+        contactCount,
+        nextAt.getTime(),
+      );
 
       db.updateBusinessEvent(event.id, {
         lastRemindedAt: Date.now(),
@@ -283,9 +290,7 @@ export const useBusinessEventStore = create<BusinessEventStore>((set, get) => ({
     set((s) => {
       const exists = s.selectedIds.includes(id);
       return {
-        selectedIds: exists
-          ? s.selectedIds.filter((i) => i !== id)
-          : [...s.selectedIds, id],
+        selectedIds: exists ? s.selectedIds.filter((i) => i !== id) : [...s.selectedIds, id],
       };
     });
   },
@@ -334,11 +339,10 @@ export const useBusinessEventStore = create<BusinessEventStore>((set, get) => ({
     }
 
     haptics.impactAsync(ImpactFeedbackStyle.Medium);
-    Toast.show({
-      type: "success",
-      text1: "Broadcast created",
-      text2: `${unique.length} contact${unique.length === 1 ? "" : "s"} added`,
-      visibilityTime: 3000,
+    showToast({
+      kind: "success",
+      title: "Broadcast created",
+      message: `${unique.length} contact${unique.length === 1 ? "" : "s"} added`,
     });
 
     get().clearSelection();

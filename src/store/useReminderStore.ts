@@ -1,9 +1,9 @@
 import * as Notifications from "expo-notifications";
-import Toast from "react-native-toast-message";
 import { create } from "zustand";
 
 import * as db from "../db";
-import { haptics, ImpactFeedbackStyle, NotificationFeedbackType } from "../lib/haptics";
+import { haptics, NotificationFeedbackType } from "../lib/haptics";
+import { showToast } from "../ui/toast";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -30,7 +30,7 @@ export interface ReminderEditData {
   tags: string | null;
 }
 
-export interface SaveParams {
+interface SaveParams {
   target: Date;
   phoneNumber: string;
   countryCode: string;
@@ -90,6 +90,17 @@ type ReminderStore = {
   closeTimePicker: () => void;
   reset: () => void;
 };
+
+/**
+ * Seed the form when the user opens the reminder sheet. This is event-time work,
+ * not a render-time synchronisation, so it lives outside an effect.
+ */
+export function prepareReminderForm(editReminder: ReminderEditData | null, customTags: string[]) {
+  const form = useReminderStore.getState();
+  form.loadTags(customTags);
+  if (editReminder) form.init(editReminder);
+  else form.reset();
+}
 
 export const useReminderStore = create<ReminderStore>((set) => ({
   message: "",
@@ -179,11 +190,10 @@ export const useReminderStore = create<ReminderStore>((set) => ({
       });
       db.updateReminderNotification(editReminder.id, notifId);
       haptics.notificationAsync(NotificationFeedbackType.Success);
-      Toast.show({
-        type: "success",
-        text1: "Reminder updated",
-        text2: formatDateForToast(target),
-        visibilityTime: 3000,
+      showToast({
+        kind: "success",
+        title: "Reminder updated",
+        message: formatDateForToast(target),
       });
     } else {
       const reminderId = db.createReminder(
@@ -206,11 +216,10 @@ export const useReminderStore = create<ReminderStore>((set) => ({
       });
       db.updateReminderNotification(reminderId, notifId);
       haptics.notificationAsync(NotificationFeedbackType.Success);
-      Toast.show({
-        type: "success",
-        text1: "Reminder set",
-        text2: formatDateForToast(target),
-        visibilityTime: 3000,
+      showToast({
+        kind: "success",
+        title: "Reminder set",
+        message: formatDateForToast(target),
       });
     }
 

@@ -1,11 +1,11 @@
 import * as Linking from "expo-linking";
 import { create } from "zustand";
 
-import type { ReminderData } from "../components/Reminders/ReminderItem";
 import * as db from "../db";
+import { haptics, NotificationFeedbackType } from "../lib/haptics";
+import type { ReminderData } from "../ui/reminders/reminder-row";
 import { useAppStore } from "./useAppStore";
 import type { ReminderEditData } from "./useReminderStore";
-import { haptics, ImpactFeedbackStyle, NotificationFeedbackType } from "../lib/haptics";
 
 type MenuMode = "active" | "completed";
 
@@ -16,7 +16,6 @@ type RemindersPageStore = {
   editVisible: boolean;
   menuReminderId: number | null;
   menuMode: MenuMode;
-  menuPos: { top: number; right: number };
   tagPickerOpen: boolean;
   viewMode: "list" | "calendar";
   selectedDate: string | null;
@@ -27,7 +26,7 @@ type RemindersPageStore = {
   setSelectedDate: (date: string | null) => void;
   openEdit: (r: ReminderEditData) => void;
   closeEdit: () => void;
-  openMenu: (id: number, mode: MenuMode, pos: { top: number; right: number }) => void;
+  openMenu: (id: number, mode: MenuMode) => void;
   closeMenu: () => void;
   openTagPicker: () => void;
   closeTagPicker: () => void;
@@ -45,7 +44,6 @@ export const useRemindersPageStore = create<RemindersPageStore>((set) => ({
   editVisible: false,
   menuReminderId: null,
   menuMode: "active",
-  menuPos: { top: 0, right: 16 },
   tagPickerOpen: false,
   viewMode: "list",
   selectedDate: null,
@@ -63,7 +61,7 @@ export const useRemindersPageStore = create<RemindersPageStore>((set) => ({
   openEdit: (r) => set({ editReminder: r, editVisible: true }),
   closeEdit: () => set({ editVisible: false, editReminder: null }),
 
-  openMenu: (id, mode, pos) => set({ menuReminderId: id, menuMode: mode, menuPos: pos }),
+  openMenu: (id, mode) => set({ menuReminderId: id, menuMode: mode }),
   closeMenu: () => set({ menuReminderId: null }),
 
   openTagPicker: () => set({ tagPickerOpen: true }),
