@@ -21,7 +21,7 @@ module.exports = {
     android: {
       adaptiveIcon: {
         foregroundImage: "./assets/adaptive-icon.png",
-        backgroundColor: "#043D2C",
+        backgroundColor: "#FFFFFF",
       },
       package: "com.atomiciq.com",
       versionCode: 2,
